@@ -1,16 +1,26 @@
 export interface LoginPayload {
-  email: string
-  password: string
+  email: string;
+  password: string;
+}
+
+export enum UserRole {
+  TECH = 2,
+  CLIENT = 3,
+}
+
+export enum TechStatus {
+  PENDING = "pending_review",
+  ACTIVE = "active",
 }
 
 export interface AuthUser {
-  id: string
-  name: string
-  role: number // 2 = técnico, 3 = cliente
-  state: 'pending_review' | 'active'
+  id: string;
+  name: string;
+  role: UserRole;
+  state?: TechStatus;
 }
 
 export interface AuthResponse {
-  accessToken: string
-  user: AuthUser
+  accessToken: string;
+  user: AuthUser;
 }

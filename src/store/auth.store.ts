@@ -1,35 +1,38 @@
-import { create } from 'zustand'
-import { login } from '@/src/services/auth.service'
-import { AuthUser, LoginPayload } from '@/src/types/auth.types'
+// src/store/auth.store.ts
+import { login } from "@/src/services/auth.service";
+import { AuthUser, LoginPayload } from "@/src/types/auth.types";
+import { create } from "zustand";
 
 interface AuthState {
-  token: string | null
-  user: AuthUser | null
-  loading: boolean
+  token: string | null;
+  user: AuthUser | null;
+  loading: boolean;
 
-  login: (payload: LoginPayload) => Promise<void>
-  logout: () => void
+  login: (payload: LoginPayload) => Promise<AuthUser>;
+  logout: () => void;
 }
 
-export const useAuthStore = create<AuthState>(set => ({
+export const useAuthStore = create<AuthState>((set) => ({
   token: null,
   user: null,
   loading: false,
 
-  login: async payload => {
-    set({ loading: true })
+  login: async (payload) => {
+    set({ loading: true });
 
     try {
-      const response = await login(payload)
+      const response = await login(payload);
 
       set({
         token: response.accessToken,
         user: response.user,
         loading: false,
-      })
+      });
+
+      return response.user; // 👈 CLAVE
     } catch (error) {
-      set({ loading: false })
-      throw error
+      set({ loading: false });
+      throw error;
     }
   },
 
@@ -38,4 +41,4 @@ export const useAuthStore = create<AuthState>(set => ({
       token: null,
       user: null,
     }),
-}))
+}));
