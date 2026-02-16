@@ -9,8 +9,11 @@ export function useLogin() {
     email: string,
     password: string,
   ): Promise<AuthUser> => {
-    // 🔑 RETORNAMOS el usuario
-    return login({ email, password });
+    try {
+      return await login({ email, password });
+    } catch (err: any) {
+      throw new Error(err?.message || "Error al iniciar sesión");
+    }
   };
 
   return {

@@ -1,0 +1,73 @@
+import { useState } from "react";
+import { router } from "expo-router";
+import { validateRegisterForm } from "@/src/utils/validators";
+import { formatDateToISO } from "@/src/utils/formaters";
+import { useRegisterStore } from "@/src/store/register.store";
+import { useToast } from "@/src/hooks/useToast";
+
+export function useRegisterForm() {
+  const { setPersonalData } = useRegisterStore();
+  const { error, success } = useToast();
+
+  const [name, setName] = useState("");
+  const [documentType, setDocumentType] = useState<number | null>(null);
+  const [documentNumber, setDocumentNumber] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [birthDate, setBirthDate] = useState<Date | null>(null);
+  const [password, setPassword] = useState("");
+  const [confirmedPassword, setConfirmedPassword] = useState("");
+
+  const onNext = () => {
+    const errorMessage = validateRegisterForm({
+      name,
+      documentType,
+      documentNumber,
+      phone,
+      email,
+      birthDate,
+      password,
+      confirmedPassword,
+    });
+
+    if (errorMessage) {
+      error(errorMessage);
+      return;
+    }
+
+    setPersonalData({
+      name,
+      documentType: documentType!,
+      documentNumber,
+      phone,
+      email,
+      birthDate: formatDateToISO(birthDate!),
+      password,
+    });
+
+    success("Datos validados correctamente");
+    router.push("/(auth)/terms_cond");
+  };
+
+  return {
+    fields: {
+      name,
+      setName,
+      documentType,
+      setDocumentType,
+      documentNumber,
+      setDocumentNumber,
+      phone,
+      setPhone,
+      email,
+      setEmail,
+      birthDate,
+      setBirthDate,
+      password,
+      setPassword,
+      confirmedPassword,
+      setConfirmedPassword,
+    },
+    onNext,
+  };
+}

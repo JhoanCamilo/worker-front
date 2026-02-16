@@ -1,7 +1,6 @@
-import Logo from "@/assets/images/favicon.png";
 import { Button } from "@/src/components/ui/Button";
 import { Input } from "@/src/components/ui/Input";
-import { useLogin } from "@/src/features/auth/auth.hooks";
+import { useLogin } from "@/src/hooks/useLogin";
 import { useToast } from "@/src/hooks/useToast";
 import Constants from "expo-constants";
 import { useRouter } from "expo-router";
@@ -14,14 +13,14 @@ import {
   Text,
   View,
 } from "react-native";
+import Logo from "../../assets/images/favicon.png";
 
 const version = Constants.expoConfig?.version;
 
 export default function LoginScreen() {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
 
-  const { handleLogin } = useLogin();
+  const { handleLogin, loading } = useLogin();
   const { success, error } = useToast();
 
   const [email, setEmail] = useState("");
@@ -34,16 +33,10 @@ export default function LoginScreen() {
     }
 
     try {
-      setLoading(true);
       await handleLogin(email, password);
-
       success("Bienvenido 👋");
-      // 👇 NADA MÁS
-      // el redirect lo hace app/_layout.tsx
     } catch (err: any) {
       error(err.message);
-    } finally {
-      setLoading(false);
     }
   };
 

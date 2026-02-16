@@ -1,24 +1,37 @@
 import { ScrollView, View, Text } from 'react-native'
 import { router } from "expo-router";
+import { useState } from "react";
 import { Button } from '@/src/components/ui/Button'
 import { useRegisterStore } from '@/src/store/register.store';
+import { useToast } from '@/src/hooks/useToast';
+import { register } from '@/src/services/register.service';
+import { RegisterPayload } from '@/src/types/register';
 
 export default function TermsConditionsScreen() {
 
-    //? Obtaining complete user data
     const { payload, clear } = useRegisterStore()
+    const { success, error } = useToast()
+    const [loading, setLoading] = useState(false)
 
-    const onConfirm = () => {
-        router.dismissAll()
-        router.replace("/(auth)/login")
-        console.log(payload);
-        clear()
+    const onConfirm = async () => {
+        try {
+            setLoading(true)
+            await register(payload as RegisterPayload)
+            success("Registro exitoso")
+        } catch (err: any) {
+            error(err?.message || "Error al registrarse")
+        } finally {
+            setLoading(false)
+            clear()
+            router.dismissAll()
+            router.replace("/(auth)/login")
+        }
     }
 
     const onReject = () => {
+        clear()
         router.dismissAll()
         router.replace("/(auth)/login")
-        clear()
     }
 
     return(
@@ -111,6 +124,7 @@ export default function TermsConditionsScreen() {
                     onPress={() => onConfirm()}
                     customStyle={{backgroundColor: "#407ee3"}}
                     type='primary'
+                    disabled={loading}
                 />
                 <Button
                     title="Rechazar"

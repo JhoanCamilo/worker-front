@@ -5,7 +5,7 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Text, View } from "react-native";
 
-export default function LoginScreen() {
+export default function VerificationCodeScreen() {
   const [code, setCode] = useState("");
   const router = useRouter();
   const logout = useAuthStore((state) => state.logout);
@@ -42,7 +42,7 @@ export default function LoginScreen() {
       <Input value={code} onChangeText={setCode} />
       <Button
         title="Aceptar"
-        onPress={() => onCancel}
+        onPress={onCancel}
         customStyle={{ backgroundColor: "#f2c70f" }}
         customTextStyles={{ color: "#000", fontSize: 15 }}
       />
