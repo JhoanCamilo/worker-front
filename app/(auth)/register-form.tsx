@@ -1,21 +1,20 @@
+import { Button } from "@/src/components/ui/Button";
+import { DateInput } from "@/src/components/ui/DateInput";
+import { LabeledInput } from "@/src/components/ui/LabeledInput";
+import { PasswordInput } from "@/src/components/ui/PasswordInput";
+import { SelectAdvanced } from "@/src/components/ui/SelectAdvanced";
+import { useRegisterForm } from "@/src/hooks/useRegisterForm";
+import { Ionicons } from "@expo/vector-icons";
 import {
-  ScrollView,
-  View,
-  Text,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
+  Text,
+  View,
 } from "react-native";
-import { LabeledInput } from "@/src/components/ui/LabeledInput";
-import { SelectAdvanced } from "@/src/components/ui/SelectAdvanced";
-import { DateInput } from "@/src/components/ui/DateInput";
-import { PasswordInput } from "@/src/components/ui/PasswordInput";
-import { Button } from "@/src/components/ui/Button";
-import { Ionicons } from "@expo/vector-icons";
-import { useRegisterForm } from "@/src/hooks/useRegisterForm";
 
 export default function RegisterFormScreen() {
   const { fields, onNext } = useRegisterForm();
-
 
   return (
     <KeyboardAvoidingView
@@ -38,7 +37,17 @@ export default function RegisterFormScreen() {
           Datos de usuario
         </Text>
 
-        <LabeledInput label="Nombre" value={fields.name} onChangeText={fields.setName} />
+        <LabeledInput
+          label="Nombres"
+          value={fields.name}
+          onChangeText={fields.setName}
+        />
+
+        <LabeledInput
+          label="Apellidos"
+          value={fields.lastName}
+          onChangeText={fields.setLastName}
+        />
 
         <SelectAdvanced
           label="Tipo de documento"

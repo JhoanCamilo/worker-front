@@ -1,4 +1,9 @@
-import { AuthResponse, LoginPayload } from "@/src/types/auth.types";
+import {
+  ApiLoginResponse,
+  AuthResponse,
+  LoginPayload,
+  UserRole,
+} from "@/src/types/auth.types";
 import { api } from "./api";
 import { mockLogin } from "./auth.mock";
 
@@ -9,6 +14,16 @@ export async function login(payload: LoginPayload): Promise<AuthResponse> {
     return mockLogin(payload);
   }
 
-  const { data } = await api.post<AuthResponse>("/auth/login", payload);
-  return data;
+  const { data } = await api.post<ApiLoginResponse>("/auth/login", {
+    correo_electronico: payload.email,
+    contraseña: payload.password,
+  });
+
+  return {
+    accessToken: data.token,
+    user: {
+      name: data.usuario.nombre,
+      role: data.usuario.rol === "TECNICO" ? UserRole.TECH : UserRole.CLIENT,
+    },
+  };
 }

@@ -10,6 +10,7 @@ export function useRegisterForm() {
   const { error, success } = useToast();
 
   const [name, setName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [documentType, setDocumentType] = useState<number | null>(null);
   const [documentNumber, setDocumentNumber] = useState("");
   const [phone, setPhone] = useState("");
@@ -21,6 +22,7 @@ export function useRegisterForm() {
   const onNext = () => {
     const errorMessage = validateRegisterForm({
       name,
+      lastName,
       documentType,
       documentNumber,
       phone,
@@ -37,12 +39,14 @@ export function useRegisterForm() {
 
     setPersonalData({
       name,
+      lastName,
       documentType: documentType!,
       documentNumber,
       phone,
       email,
       birthDate: formatDateToISO(birthDate!),
       password,
+      confirmedPassword,
     });
 
     success("Datos validados correctamente");
@@ -53,6 +57,8 @@ export function useRegisterForm() {
     fields: {
       name,
       setName,
+      lastName,
+      setLastName,
       documentType,
       setDocumentType,
       documentNumber,

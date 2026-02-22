@@ -5,7 +5,7 @@ export async function mockRegister(
 ): Promise<{ message: string }> {
   return new Promise((resolve, reject) => {
     setTimeout(() => {
-      if (!payload.email || !payload.password) {
+      if (!payload.email || !payload.password || !payload.name || !payload.lastName) {
         reject(new Error("Datos incompletos"));
         return;
       }

@@ -1,5 +1,6 @@
 export interface RegisterFormData {
   name: string
+  lastName: string
   documentType: number | null
   documentNumber: string
   phone: string
@@ -11,6 +12,8 @@ export interface RegisterFormData {
 
 export function validateRegisterForm(data: RegisterFormData): string | null {
   if (!data.name.trim()) return 'El nombre es obligatorio'
+
+  if (!data.lastName.trim()) return 'El apellido es obligatorio'
 
   if (!data.documentType)
     return 'Seleccione un tipo de documento'

@@ -36,7 +36,15 @@ export function useAuthGuard() {
       return;
     }
 
-    // Usuario normal → tabs
+    // Técnico activo → sección técnico
+    if (user?.role === UserRole.TECH) {
+      if (group !== "(technician)") {
+        router.replace("/(technician)/home");
+      }
+      return;
+    }
+
+    // Cliente → tabs generales
     if (group !== "(tabs)") {
       router.replace("/home");
     }

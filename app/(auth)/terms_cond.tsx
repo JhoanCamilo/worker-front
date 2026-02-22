@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from '@/src/components/ui/Button'
 import { useRegisterStore } from '@/src/store/register.store';
 import { useToast } from '@/src/hooks/useToast';
-import { register } from '@/src/services/register.service';
+import { registerCliente } from '@/src/services/register.service';
 import { RegisterPayload } from '@/src/types/register';
 
 export default function TermsConditionsScreen() {
@@ -16,7 +16,7 @@ export default function TermsConditionsScreen() {
     const onConfirm = async () => {
         try {
             setLoading(true)
-            await register(payload as RegisterPayload)
+            await registerCliente(payload as RegisterPayload)
             success("Registro exitoso")
         } catch (err: any) {
             error(err?.message || "Error al registrarse")

@@ -14,7 +14,7 @@ export enum TechStatus {
 }
 
 export interface AuthUser {
-  id: string;
+  id?: string;
   name: string;
   role: UserRole;
   state?: TechStatus;
@@ -23,4 +23,14 @@ export interface AuthUser {
 export interface AuthResponse {
   accessToken: string;
   user: AuthUser;
+}
+
+/** Contrato exacto que devuelve POST /auth/login */
+export interface ApiLoginResponse {
+  message: string;
+  token: string;
+  usuario: {
+    nombre: string;
+    rol: "TECNICO" | "CLIENTE";
+  };
 }
