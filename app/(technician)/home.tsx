@@ -1,22 +1,28 @@
-import { useAuthStore } from "@/src/store/auth.store";
+import { updateDisponibilidad } from "@/src/services/technician.service";
+import { useToast } from "@/src/hooks/useToast";
 import { useState } from "react";
-import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { ActivityIndicator, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 export default function TechnicianHomeScreen() {
-  const user = useAuthStore((state) => state.user);
   const [active, setActive] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const { error } = useToast();
+
+  const handleToggle = async () => {
+    const next = !active;
+    setLoading(true);
+    try {
+      await updateDisponibilidad(next);
+      setActive(next);
+    } catch {
+      error("No se pudo actualizar el estado");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerText}>
-          <Text style={styles.headerGreeting}>Bienvenido, </Text>
-          <Text style={styles.headerName}>{user?.name ?? "Técnico"}</Text>
-        </Text>
-      </View>
-
+    <View style={styles.container}>
       {/* Body con logo de fondo */}
       <View style={styles.body}>
         <Image
@@ -33,15 +39,20 @@ export default function TechnicianHomeScreen() {
             styles.statusButton,
             { backgroundColor: active ? "#14c681" : "#9ca3af" },
           ]}
-          onPress={() => setActive((prev) => !prev)}
+          onPress={handleToggle}
           activeOpacity={0.8}
+          disabled={loading}
         >
-          <Text style={styles.statusText}>
-            {active ? "Estado: Activo" : "Estado: Inactivo"}
-          </Text>
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.statusText}>
+              {active ? "Estado: Activo" : "Estado: Inactivo"}
+            </Text>
+          )}
         </TouchableOpacity>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -49,24 +60,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#fff",
-  },
-  header: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderColor: "#0a7ea4",
-  },
-  headerText: {
-    fontSize: 18,
-  },
-  headerGreeting: {
-    fontSize: 25,
-    color: "#0a7ea4",
-  },
-  headerName: {
-    fontSize: 25,
-    fontWeight: "bold",
-    color: "#11181C",
   },
   body: {
     flex: 1,

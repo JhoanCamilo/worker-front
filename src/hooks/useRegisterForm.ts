@@ -6,8 +6,9 @@ import { useRegisterStore } from "@/src/store/register.store";
 import { useToast } from "@/src/hooks/useToast";
 
 export function useRegisterForm() {
-  const { setPersonalData } = useRegisterStore();
+  const { setPersonalData, payload } = useRegisterStore();
   const { error, success } = useToast();
+  const role = payload.role;
 
   const [name, setName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -18,6 +19,7 @@ export function useRegisterForm() {
   const [birthDate, setBirthDate] = useState<Date | null>(null);
   const [password, setPassword] = useState("");
   const [confirmedPassword, setConfirmedPassword] = useState("");
+  const [cityId, setCityId] = useState<number | null>(null);
 
   const onNext = () => {
     const errorMessage = validateRegisterForm({
@@ -30,6 +32,8 @@ export function useRegisterForm() {
       birthDate,
       password,
       confirmedPassword,
+      role,
+      cityId,
     });
 
     if (errorMessage) {
@@ -47,6 +51,7 @@ export function useRegisterForm() {
       birthDate: formatDateToISO(birthDate!),
       password,
       confirmedPassword,
+      ...(role === 2 && { cityId: cityId! }),
     });
 
     success("Datos validados correctamente");
@@ -54,6 +59,7 @@ export function useRegisterForm() {
   };
 
   return {
+    role,
     fields: {
       name,
       setName,
@@ -73,6 +79,8 @@ export function useRegisterForm() {
       setPassword,
       confirmedPassword,
       setConfirmedPassword,
+      cityId,
+      setCityId,
     },
     onNext,
   };

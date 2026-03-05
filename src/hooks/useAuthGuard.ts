@@ -28,10 +28,10 @@ export function useAuthGuard() {
       return;
     }
 
-    // Técnico pendiente → verification
+    // Técnico pendiente → pantalla de espera
     if (user?.role === UserRole.TECH && user.state === TechStatus.PENDING) {
-      if (pathname !== "(flows)/verification_code") {
-        router.replace("/verification_code");
+      if (pathname !== "(flows)/pending") {
+        router.replace("/pending");
       }
       return;
     }

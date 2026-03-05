@@ -2,6 +2,7 @@ import {
   ApiLoginResponse,
   AuthResponse,
   LoginPayload,
+  TechStatus,
   UserRole,
 } from "@/src/types/auth.types";
 import { api } from "./api";
@@ -24,6 +25,7 @@ export async function login(payload: LoginPayload): Promise<AuthResponse> {
     user: {
       name: data.usuario.nombre,
       role: data.usuario.rol === "TECNICO" ? UserRole.TECH : UserRole.CLIENT,
+      state: data.usuario.estado_validacion as TechStatus | undefined,
     },
   };
 }

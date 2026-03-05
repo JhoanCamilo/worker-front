@@ -8,6 +8,8 @@ export interface RegisterFormData {
   birthDate: Date | null
   password: string
   confirmedPassword: string
+  role?: number
+  cityId?: number | null
 }
 
 export function validateRegisterForm(data: RegisterFormData): string | null {
@@ -44,6 +46,9 @@ export function validateRegisterForm(data: RegisterFormData): string | null {
 
   if (data.password !== data.confirmedPassword)
     return 'Las contraseñas no coinciden'
+
+  if (data.role === 2 && !data.cityId)
+    return 'Seleccione una ciudad'
 
   return null
 }

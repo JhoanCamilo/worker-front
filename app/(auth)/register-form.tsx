@@ -3,6 +3,7 @@ import { DateInput } from "@/src/components/ui/DateInput";
 import { LabeledInput } from "@/src/components/ui/LabeledInput";
 import { PasswordInput } from "@/src/components/ui/PasswordInput";
 import { SelectAdvanced } from "@/src/components/ui/SelectAdvanced";
+import { useCities } from "@/src/hooks/useCities";
 import { useRegisterForm } from "@/src/hooks/useRegisterForm";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -14,7 +15,9 @@ import {
 } from "react-native";
 
 export default function RegisterFormScreen() {
-  const { fields, onNext } = useRegisterForm();
+  const { fields, onNext, role } = useRegisterForm();
+  const { options: cityOptions, loading: loadingCities } = useCities();
+  const isTech = role === 2;
 
   return (
     <KeyboardAvoidingView
@@ -84,6 +87,16 @@ export default function RegisterFormScreen() {
           value={fields.birthDate}
           onChange={fields.setBirthDate}
         />
+
+        {isTech && (
+          <SelectAdvanced
+            label="Ciudad"
+            placeholder={loadingCities ? "Cargando ciudades..." : "Seleccione una ciudad"}
+            value={fields.cityId}
+            onChange={fields.setCityId}
+            options={cityOptions}
+          />
+        )}
 
         {/* Contraseña */}
         <View

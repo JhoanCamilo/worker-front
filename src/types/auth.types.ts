@@ -9,8 +9,8 @@ export enum UserRole {
 }
 
 export enum TechStatus {
-  PENDING = "pending_review",
-  ACTIVE = "active",
+  PENDING = "PENDIENTE_VALIDACION",
+  ACTIVE = "ACTIVO",
 }
 
 export interface AuthUser {
@@ -32,5 +32,6 @@ export interface ApiLoginResponse {
   usuario: {
     nombre: string;
     rol: "TECNICO" | "CLIENTE";
+    estado_validacion?: "PENDIENTE_VALIDACION" | "ACTIVO";
   };
 }
