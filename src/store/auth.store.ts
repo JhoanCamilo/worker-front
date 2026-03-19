@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { login } from "@/src/services/auth.service";
-import { AuthUser, LoginPayload } from "@/src/types/auth.types";
+import { updateDisponibilidad } from "@/src/services/technician.service";
+import { AuthUser, LoginPayload, UserRole } from "@/src/types/auth.types";
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 
@@ -10,12 +11,13 @@ interface AuthState {
   loading: boolean;
 
   login: (payload: LoginPayload) => Promise<AuthUser>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  updateUser: (partial: Partial<AuthUser>) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       token: null,
       user: null,
       loading: false,
@@ -39,11 +41,21 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      logout: () =>
-        set({
-          token: null,
-          user: null,
-        }),
+      updateUser: (partial) =>
+        set((state) => ({
+          user: state.user ? { ...state.user, ...partial } : null,
+        })),
+
+      logout: async () => {
+        if (get().user?.role === UserRole.TECH) {
+          try {
+            await updateDisponibilidad(false);
+          } catch {
+            // always logout even if the call fails
+          }
+        }
+        set({ token: null, user: null });
+      },
     }),
     {
       name: "auth-storage",

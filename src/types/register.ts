@@ -17,8 +17,7 @@ export interface RegisterPayload {
   password: string
   confirmedPassword: string
 
-  //? Solo requerido para técnicos
-  cityId?: number
+  cityId: number
 }
 
 /** Contrato exacto de POST /clientes/registro */
@@ -33,6 +32,7 @@ export interface ClienteRegistroPayload {
   id_tipoDoc: number
   fecha_nacimiento: string
   acepta_terminos: boolean
+  id_ciudad: number
 }
 
 /** Contrato exacto de POST /tecnicos/registro */

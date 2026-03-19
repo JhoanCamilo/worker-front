@@ -18,6 +18,8 @@ export interface AuthUser {
   name: string;
   role: UserRole;
   state?: TechStatus;
+  disponible?: boolean;
+  radioKm?: number;
 }
 
 export interface AuthResponse {
@@ -33,5 +35,7 @@ export interface ApiLoginResponse {
     nombre: string;
     rol: "TECNICO" | "CLIENTE";
     estado_validacion?: "PENDIENTE_VALIDACION" | "ACTIVO";
+    disponible_inmediato?: boolean;
+    radio_cobertura_km?: number;
   };
 }

@@ -15,9 +15,8 @@ import {
 } from "react-native";
 
 export default function RegisterFormScreen() {
-  const { fields, onNext, role } = useRegisterForm();
+  const { fields, onNext } = useRegisterForm();
   const { options: cityOptions, loading: loadingCities } = useCities();
-  const isTech = role === 2;
 
   return (
     <KeyboardAvoidingView
@@ -88,15 +87,13 @@ export default function RegisterFormScreen() {
           onChange={fields.setBirthDate}
         />
 
-        {isTech && (
-          <SelectAdvanced
-            label="Ciudad"
-            placeholder={loadingCities ? "Cargando ciudades..." : "Seleccione una ciudad"}
-            value={fields.cityId}
-            onChange={fields.setCityId}
-            options={cityOptions}
-          />
-        )}
+        <SelectAdvanced
+          label="Ciudad"
+          placeholder={loadingCities ? "Cargando ciudades..." : "Seleccione una ciudad"}
+          value={fields.cityId}
+          onChange={fields.setCityId}
+          options={cityOptions}
+        />
 
         {/* Contraseña */}
         <View

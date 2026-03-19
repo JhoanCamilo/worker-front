@@ -1,11 +1,8 @@
 import { useEffect, useState } from "react";
-import {
-  getTechnicianProfile,
-  TechnicianProfile,
-} from "@/src/services/technician.service";
+import { ClientProfile, getClientProfile } from "@/src/services/client.service";
 
-export function useTechnicianProfile() {
-  const [original, setOriginal] = useState<TechnicianProfile | null>(null);
+export function useClientProfile() {
+  const [original, setOriginal] = useState<ClientProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [phone, setPhone] = useState("");
@@ -13,7 +10,7 @@ export function useTechnicianProfile() {
   const [cityId, setCityId] = useState<number | null>(null);
 
   useEffect(() => {
-    getTechnicianProfile()
+    getClientProfile()
       .then((data) => {
         setOriginal(data);
         setPhone(data.telefono ?? "");

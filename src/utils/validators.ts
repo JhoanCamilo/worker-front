@@ -47,7 +47,7 @@ export function validateRegisterForm(data: RegisterFormData): string | null {
   if (data.password !== data.confirmedPassword)
     return 'Las contraseñas no coinciden'
 
-  if (data.role === 2 && !data.cityId)
+  if (!data.cityId)
     return 'Seleccione una ciudad'
 
   return null

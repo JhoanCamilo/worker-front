@@ -51,7 +51,7 @@ export function useRegisterForm() {
       birthDate: formatDateToISO(birthDate!),
       password,
       confirmedPassword,
-      ...(role === 2 && { cityId: cityId! }),
+      cityId: cityId!,
     });
 
     success("Datos validados correctamente");

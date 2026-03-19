@@ -18,3 +18,17 @@ export async function getTechnicianProfile(): Promise<TechnicianProfile> {
 export async function updateDisponibilidad(disponible: boolean): Promise<void> {
   await api.put("/tecnicos/perfil", { disponible_inmediato: disponible });
 }
+
+export interface TechnicianCitiesData {
+  ciudad_base: { id_ciudad: number; nombre_ciudad: string };
+  ciudades_adicionales: {
+    id_ciudad_tecnico: number;
+    id_ciudad: number;
+    nombre_ciudad: string;
+  }[];
+}
+
+export async function getTechnicianCities(): Promise<TechnicianCitiesData> {
+  const { data } = await api.get("/tecnicos/ciudades");
+  return data.data;
+}

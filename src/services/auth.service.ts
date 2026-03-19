@@ -10,6 +10,18 @@ import { mockLogin } from "./auth.mock";
 
 const USE_MOCK = process.env.EXPO_PUBLIC_USE_MOCK_API === "true";
 
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string,
+  confirmNewPassword: string,
+): Promise<void> {
+  await api.put("/auth/cambiar-contrasena", {
+    contrasena_actual: currentPassword,
+    nueva_contrasena: newPassword,
+    confirmar_nueva_contrasena: confirmNewPassword,
+  });
+}
+
 export async function login(payload: LoginPayload): Promise<AuthResponse> {
   if (USE_MOCK) {
     return mockLogin(payload);
@@ -26,6 +38,8 @@ export async function login(payload: LoginPayload): Promise<AuthResponse> {
       name: data.usuario.nombre,
       role: data.usuario.rol === "TECNICO" ? UserRole.TECH : UserRole.CLIENT,
       state: data.usuario.estado_validacion as TechStatus | undefined,
+      disponible: data.usuario.disponible_inmediato,
+      radioKm: data.usuario.radio_cobertura_km,
     },
   };
 }

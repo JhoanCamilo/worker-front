@@ -1,10 +1,13 @@
 import { PasswordInput } from "@/src/components/ui/PasswordInput";
 import { SelectAdvanced } from "@/src/components/ui/SelectAdvanced";
+import { ServiceAreaModal } from "@/src/components/ui/ServiceAreaModal";
 import { useCities } from "@/src/hooks/useCities";
+import { usePasswordChange } from "@/src/hooks/usePasswordChange";
 import { useTechnicianProfile } from "@/src/hooks/useTechnicianProfile";
 import { useAuthStore } from "@/src/store/auth.store";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -59,10 +62,30 @@ function EditableField({
 
 export default function TechnicianProfileScreen() {
   const logout = useAuthStore((state) => state.logout);
+  const user = useAuthStore((state) => state.user);
   const router = useRouter();
   const { loading, original, fields, hasChanges, handleCancel } =
     useTechnicianProfile();
   const { options: cityOptions, loading: loadingCities } = useCities();
+  const [serviceAreaVisible, setServiceAreaVisible] = useState(false);
+
+  const pw = usePasswordChange(() => {
+    logout();
+    router.replace("/login");
+  });
+
+  // Ref para siempre tener las versiones actuales de los cancels sin deps estale
+  const resetRef = useRef({ profile: handleCancel, password: pw.handleCancel });
+  resetRef.current = { profile: handleCancel, password: pw.handleCancel };
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        resetRef.current.profile();
+        resetRef.current.password();
+      };
+    }, [])
+  );
 
   const handleLogout = () => {
     logout();
@@ -114,7 +137,6 @@ export default function TechnicianProfileScreen() {
           onChange={fields.setCityId}
           options={cityOptions}
         />
-
         <ReadonlyField
           label="Fecha de nacimiento"
           value={original?.fecha_nacimiento ?? ""}
@@ -131,9 +153,19 @@ export default function TechnicianProfileScreen() {
           <Text style={styles.proButtonText}>Editar servicios</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.proButton}>
+        <TouchableOpacity
+          style={styles.proButton}
+          onPress={() => setServiceAreaVisible(true)}
+        >
           <Text style={styles.proButtonText}>Definir áreas de servicio</Text>
         </TouchableOpacity>
+
+        <ServiceAreaModal
+          visible={serviceAreaVisible}
+          onClose={() => setServiceAreaVisible(false)}
+          onFinish={() => setServiceAreaVisible(false)}
+          initialKm={user?.radioKm}
+        />
 
         {/* ── Seguridad ── */}
         <SectionTitle title="Seguridad" />
@@ -143,19 +175,43 @@ export default function TechnicianProfileScreen() {
 
           <PasswordInput
             placeholder="Contraseña actual"
-            value={fields.currentPassword}
-            onChangeText={fields.setCurrentPassword}
+            value={pw.fields.currentPassword}
+            onChangeText={pw.fields.setCurrentPassword}
           />
           <PasswordInput
             placeholder="Nueva contraseña"
-            value={fields.newPassword}
-            onChangeText={fields.setNewPassword}
+            value={pw.fields.newPassword}
+            onChangeText={pw.fields.setNewPassword}
           />
           <PasswordInput
             placeholder="Confirmar contraseña"
-            value={fields.confirmPassword}
-            onChangeText={fields.setConfirmPassword}
+            value={pw.fields.confirmPassword}
+            onChangeText={pw.fields.setConfirmPassword}
           />
+
+          {pw.hasChanges && (
+            <View style={styles.pwActionRow}>
+              <TouchableOpacity
+                style={[styles.pwButton, styles.pwSave]}
+                onPress={pw.handleSave}
+                disabled={pw.loading}
+              >
+                {pw.loading ? (
+                  <ActivityIndicator color="#000" />
+                ) : (
+                  <Text style={styles.pwSaveText}>Guardar contraseña</Text>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.pwButton, styles.pwCancel]}
+                onPress={pw.handleCancel}
+                disabled={pw.loading}
+              >
+                <Text style={styles.pwCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         {/* ── Salir ── */}
@@ -269,6 +325,33 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     fontSize: 15,
     marginBottom: 12,
+  },
+  pwActionRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 4,
+  },
+  pwButton: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  pwSave: {
+    backgroundColor: "#f2c70f",
+  },
+  pwCancel: {
+    backgroundColor: "#e5e7eb",
+  },
+  pwSaveText: {
+    color: "#000",
+    fontWeight: "600",
+    fontSize: 14,
+  },
+  pwCancelText: {
+    color: "#374151",
+    fontWeight: "600",
+    fontSize: 14,
   },
   actionRow: {
     flexDirection: "row",

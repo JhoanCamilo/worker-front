@@ -48,6 +48,7 @@ export async function registerCliente(
     id_tipoDoc: payload.documentType,
     fecha_nacimiento: payload.birthDate,
     acepta_terminos: true,
+    id_ciudad: payload.cityId,
   };
 
   const { data } = await api.post<{ message: string }>(

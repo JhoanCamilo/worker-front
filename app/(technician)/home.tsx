@@ -1,10 +1,14 @@
 import { updateDisponibilidad } from "@/src/services/technician.service";
 import { useToast } from "@/src/hooks/useToast";
+import { useAuthStore } from "@/src/store/auth.store";
 import { useState } from "react";
 import { ActivityIndicator, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 export default function TechnicianHomeScreen() {
-  const [active, setActive] = useState(true);
+  const user = useAuthStore((state) => state.user);
+  const updateUser = useAuthStore((state) => state.updateUser);
+
+  const [active, setActive] = useState(user?.disponible ?? false);
   const [loading, setLoading] = useState(false);
   const { error } = useToast();
 
@@ -14,6 +18,7 @@ export default function TechnicianHomeScreen() {
     try {
       await updateDisponibilidad(next);
       setActive(next);
+      updateUser({ disponible: next });
     } catch {
       error("No se pudo actualizar el estado");
     } finally {
