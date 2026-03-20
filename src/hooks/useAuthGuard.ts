@@ -44,8 +44,8 @@ export function useAuthGuard() {
       return;
     }
 
-    // Cliente → tabs generales
-    if (group !== "(tabs)") {
+    // Cliente → tabs generales o flujos de servicio
+    if (group !== "(tabs)" && group !== "(flows)") {
       router.replace("/home");
     }
   }, [token, user, segments, mounted]);

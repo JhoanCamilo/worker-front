@@ -1,12 +1,19 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 export default function ClientHomeScreen() {
+  const router = useRouter();
+
   return (
     <View style={styles.container}>
       {/* Botones */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.helpButton} activeOpacity={0.8}>
+        <TouchableOpacity
+          style={styles.helpButton}
+          activeOpacity={0.8}
+          onPress={() => router.push("/service-category")}
+        >
           <Text style={styles.helpText}>
             ¿Cómo podemos ayudarte el día de hoy?
           </Text>
