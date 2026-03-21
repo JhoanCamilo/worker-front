@@ -1,3 +1,4 @@
+import { EditServicesModal } from "@/src/components/ui/EditServicesModal";
 import { PasswordInput } from "@/src/components/ui/PasswordInput";
 import { SelectAdvanced } from "@/src/components/ui/SelectAdvanced";
 import { ServiceAreaModal } from "@/src/components/ui/ServiceAreaModal";
@@ -6,10 +7,12 @@ import { usePasswordChange } from "@/src/hooks/usePasswordChange";
 import { useTechnicianProfile } from "@/src/hooks/useTechnicianProfile";
 import { useAuthStore } from "@/src/store/auth.store";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -68,6 +71,21 @@ export default function TechnicianProfileScreen() {
     useTechnicianProfile();
   const { options: cityOptions, loading: loadingCities } = useCities();
   const [serviceAreaVisible, setServiceAreaVisible] = useState(false);
+  const [editServicesVisible, setEditServicesVisible] = useState(false);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+
+  const handlePickPhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") return;
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      setPhotoUri(result.assets[0].uri);
+    }
+  };
 
   const pw = usePasswordChange(() => {
     logout();
@@ -84,7 +102,7 @@ export default function TechnicianProfileScreen() {
         resetRef.current.profile();
         resetRef.current.password();
       };
-    }, [])
+    }, []),
   );
 
   const handleLogout = () => {
@@ -111,6 +129,25 @@ export default function TechnicianProfileScreen() {
       >
         <Text style={styles.pageTitle}>Datos del técnico</Text>
 
+        {/* ── Foto de perfil ── */}
+        <View style={styles.photoWrapper}>
+          <View
+            style={[
+              styles.photoCircle,
+              photoUri ? styles.photoCircleWithImage : undefined,
+            ]}
+          >
+            {photoUri ? (
+              <Image source={{ uri: photoUri }} style={styles.photoImage} />
+            ) : (
+              <Ionicons name="person" size={64} color="#000" />
+            )}
+          </View>
+          <TouchableOpacity style={styles.cameraBtn} onPress={handlePickPhoto}>
+            <Ionicons name="camera" size={18} color="#fff" />
+          </TouchableOpacity>
+        </View>
+
         {/* ── Datos personales ── */}
         <SectionTitle title="Datos personales" />
 
@@ -132,7 +169,9 @@ export default function TechnicianProfileScreen() {
         />
         <SelectAdvanced
           label="Ciudad base"
-          placeholder={loadingCities ? "Cargando ciudades..." : "Seleccione una ciudad"}
+          placeholder={
+            loadingCities ? "Cargando ciudades..." : "Seleccione una ciudad"
+          }
           value={fields.cityId}
           onChange={fields.setCityId}
           options={cityOptions}
@@ -149,9 +188,18 @@ export default function TechnicianProfileScreen() {
         {/* ── Datos profesionales ── */}
         <SectionTitle title="Datos profesionales" />
 
-        <TouchableOpacity style={styles.proButton}>
+        <TouchableOpacity
+          style={styles.proButton}
+          onPress={() => setEditServicesVisible(true)}
+        >
           <Text style={styles.proButtonText}>Editar servicios</Text>
         </TouchableOpacity>
+
+        <EditServicesModal
+          visible={editServicesVisible}
+          onClose={() => setEditServicesVisible(false)}
+          onFinish={() => setEditServicesVisible(false)}
+        />
 
         <TouchableOpacity
           style={styles.proButton}
@@ -389,5 +437,39 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
+  },
+  photoWrapper: {
+    alignItems: "center",
+    marginBottom: 24,
+  },
+  photoCircle: {
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: "#f2c70f",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  photoCircleWithImage: {
+    backgroundColor: "transparent",
+    borderWidth: 2,
+    borderColor: "#f2c70f",
+  },
+  photoImage: {
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+  },
+  cameraBtn: {
+    position: "absolute",
+    bottom: 0,
+    right: "32%",
+    width: 45,
+    height: 45,
+    borderRadius: 22.5,
+    backgroundColor: "#407ee3",
+    alignItems: "center",
+    justifyContent: "center",
   },
 });
