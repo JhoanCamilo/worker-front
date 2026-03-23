@@ -67,8 +67,8 @@ export default function ClientProfileScreen() {
     useClientProfile();
   const { options: cityOptions, loading: loadingCities } = useCities();
 
-  const pw = usePasswordChange(() => {
-    logout();
+  const pw = usePasswordChange(async () => {
+    await logout();
     router.replace("/login");
   });
 
@@ -84,8 +84,8 @@ export default function ClientProfileScreen() {
     }, [])
   );
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     router.replace("/login");
   };
 

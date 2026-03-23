@@ -4,6 +4,14 @@ import {
   TechnicianProfile,
 } from "@/src/services/technician.service";
 
+const BASE_URL = (process.env.EXPO_PUBLIC_API_URL ?? "").replace(/\/api\/?$/, "");
+
+function toAbsoluteUrl(path: string | null | undefined): string | null {
+  if (!path) return null;
+  if (path.startsWith("http")) return path;
+  return `${BASE_URL}${path}`;
+}
+
 export function useTechnicianProfile() {
   const [original, setOriginal] = useState<TechnicianProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -11,6 +19,7 @@ export function useTechnicianProfile() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [cityId, setCityId] = useState<number | null>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     getTechnicianProfile()
@@ -19,6 +28,7 @@ export function useTechnicianProfile() {
         setPhone(data.telefono ?? "");
         setEmail(data.correo_electronico ?? "");
         setCityId(data.id_ciudad ?? null);
+        setPhotoUrl(toAbsoluteUrl(data.url_foto));
       })
       .finally(() => setLoading(false));
   }, []);
@@ -37,6 +47,8 @@ export function useTechnicianProfile() {
   return {
     loading,
     original,
+    photoUrl,
+    setPhotoUrl,
     fields: { phone, setPhone, email, setEmail, cityId, setCityId },
     hasChanges,
     handleCancel,

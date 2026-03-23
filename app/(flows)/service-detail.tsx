@@ -17,7 +17,7 @@ import {
 
 export default function ServiceDetailScreen() {
   const router = useRouter();
-  const { categoryName, subcategoryName } = useLocalSearchParams<{
+  const { categoryId, categoryName, subcategoryId, subcategoryName } = useLocalSearchParams<{
     categoryId: string;
     categoryName: string;
     subcategoryId: string;
@@ -29,6 +29,7 @@ export default function ServiceDetailScreen() {
   const [description, setDescription] = useState("");
   const [useLocation, setUseLocation] = useState(false);
   const [loadingLocation, setLoadingLocation] = useState(false);
+  const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
 
   const screenTitle =
     subcategoryName
@@ -53,6 +54,7 @@ export default function ServiceDetailScreen() {
         return;
       }
       const loc = await Location.getCurrentPositionAsync({});
+      setCoords({ lat: loc.coords.latitude, lon: loc.coords.longitude });
       const [place] = await Location.reverseGeocodeAsync(loc.coords);
       if (place) {
         const parts = [
@@ -154,7 +156,26 @@ export default function ServiceDetailScreen() {
 
       {/* Botones fijos */}
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.requestBtn} activeOpacity={0.8}>
+        <TouchableOpacity
+          style={styles.requestBtn}
+          activeOpacity={0.8}
+          onPress={() =>
+            router.push({
+              pathname: "/searching",
+              params: {
+                categoryId: categoryId ?? "",
+                categoryName: categoryName ?? "",
+                subcategoryId: subcategoryId ?? "",
+                subcategoryName: subcategoryName ?? "",
+                address,
+                complement,
+                description,
+                lat: coords ? String(coords.lat) : "",
+                lon: coords ? String(coords.lon) : "",
+              },
+            })
+          }
+        >
           <Text style={styles.requestText}>Solicitar</Text>
         </TouchableOpacity>
 

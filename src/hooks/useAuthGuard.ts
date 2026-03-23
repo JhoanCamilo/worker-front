@@ -36,9 +36,9 @@ export function useAuthGuard() {
       return;
     }
 
-    // Técnico activo → sección técnico
+    // Técnico activo → sección técnico o flujos
     if (user?.role === UserRole.TECH) {
-      if (group !== "(technician)") {
+      if (group !== "(technician)" && group !== "(flows)") {
         router.replace("/(technician)/home");
       }
       return;

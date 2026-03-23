@@ -6,12 +6,16 @@ import { useCities } from "@/src/hooks/useCities";
 import { usePasswordChange } from "@/src/hooks/usePasswordChange";
 import { useTechnicianProfile } from "@/src/hooks/useTechnicianProfile";
 import { useAuthStore } from "@/src/store/auth.store";
+import { uploadTechnicianPhoto } from "@/src/services/technician.service";
+import { useToast } from "@/src/hooks/useToast";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useRef, useState } from "react";
 import {
+  ActionSheetIOS,
   ActivityIndicator,
+  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -67,28 +71,67 @@ export default function TechnicianProfileScreen() {
   const logout = useAuthStore((state) => state.logout);
   const user = useAuthStore((state) => state.user);
   const router = useRouter();
-  const { loading, original, fields, hasChanges, handleCancel } =
+  const { loading, original, photoUrl, setPhotoUrl, fields, hasChanges, handleCancel } =
     useTechnicianProfile();
   const { options: cityOptions, loading: loadingCities } = useCities();
+  const { success, error } = useToast();
   const [serviceAreaVisible, setServiceAreaVisible] = useState(false);
   const [editServicesVisible, setEditServicesVisible] = useState(false);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
-  const handlePickPhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") return;
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-    if (!result.canceled) {
-      setPhotoUri(result.assets[0].uri);
+  const pickFromSource = async (useCamera: boolean) => {
+    if (useCamera) {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permiso denegado", "Se necesita acceso a la cámara.");
+        return;
+      }
+    } else {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permiso denegado", "Se necesita acceso a la galería.");
+        return;
+      }
+    }
+
+    const result = useCamera
+      ? await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.8 })
+      : await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.8, mediaTypes: ["images"] });
+
+    if (result.canceled) return;
+
+    const uri = result.assets[0].uri;
+    setPhotoUri(uri);
+    setUploadingPhoto(true);
+    try {
+      const url = await uploadTechnicianPhoto(uri);
+      setPhotoUrl(url);
+      success("Foto actualizada correctamente");
+    } catch {
+      error("No se pudo subir la foto");
+    } finally {
+      setUploadingPhoto(false);
     }
   };
 
-  const pw = usePasswordChange(() => {
-    logout();
+  const handlePickPhoto = () => {
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: ["Cancelar", "Tomar foto", "Elegir de la galería"], cancelButtonIndex: 0 },
+        (i) => { if (i === 1) pickFromSource(true); if (i === 2) pickFromSource(false); },
+      );
+    } else {
+      Alert.alert("Foto de perfil", "¿Cómo quieres subir la foto?", [
+        { text: "Cámara", onPress: () => pickFromSource(true) },
+        { text: "Galería", onPress: () => pickFromSource(false) },
+        { text: "Cancelar", style: "cancel" },
+      ]);
+    }
+  };
+
+  const pw = usePasswordChange(async () => {
+    await logout();
     router.replace("/login");
   });
 
@@ -105,8 +148,8 @@ export default function TechnicianProfileScreen() {
     }, []),
   );
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     router.replace("/login");
   };
 
@@ -134,17 +177,20 @@ export default function TechnicianProfileScreen() {
           <View
             style={[
               styles.photoCircle,
-              photoUri ? styles.photoCircleWithImage : undefined,
+              (photoUri || photoUrl) ? styles.photoCircleWithImage : undefined,
             ]}
           >
-            {photoUri ? (
-              <Image source={{ uri: photoUri }} style={styles.photoImage} />
+            {(photoUri || photoUrl) ? (
+              <Image source={{ uri: photoUri ?? photoUrl! }} style={styles.photoImage} />
             ) : (
               <Ionicons name="person" size={64} color="#000" />
             )}
           </View>
-          <TouchableOpacity style={styles.cameraBtn} onPress={handlePickPhoto}>
-            <Ionicons name="camera" size={18} color="#fff" />
+          <TouchableOpacity style={styles.cameraBtn} onPress={handlePickPhoto} disabled={uploadingPhoto}>
+            {uploadingPhoto
+              ? <ActivityIndicator size="small" color="#fff" />
+              : <Ionicons name="camera" size={18} color="#fff" />
+            }
           </TouchableOpacity>
         </View>
 

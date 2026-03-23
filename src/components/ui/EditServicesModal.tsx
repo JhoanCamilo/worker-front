@@ -2,6 +2,13 @@ import {
   getCategorias,
   getSubcategorias,
 } from "@/src/services/category.service";
+import {
+  addTechnicianEspecialidades,
+  deleteTechnicianEspecialidad,
+  getTechnicianEspecialidades,
+  TechnicianEspecialidad,
+} from "@/src/services/technician.service";
+import { useToast } from "@/src/hooks/useToast";
 import FontAwesome5 from "@expo/vector-icons/FontAwesome5";
 import { useEffect, useState } from "react";
 import {
@@ -16,41 +23,67 @@ import {
 } from "react-native";
 import { SelectAdvanced, SelectOption } from "./SelectAdvanced";
 
-interface Specialty {
+// Especialidad ya guardada en BD
+type SavedItem = TechnicianEspecialidad & { source: "saved" };
+// Especialidad nueva, aún no enviada
+interface NewItem {
+  source: "new";
+  tempId: number;
   categoryId: number;
   categoryName: string;
   subcategoryId: number;
   subcategoryName: string;
 }
+type ListItem = SavedItem | NewItem;
 
 interface Props {
   visible: boolean;
   onClose: () => void;
-  onFinish: (specialties: Specialty[]) => void;
+  onFinish: () => void;
 }
 
+let _tempId = 0;
+
 export function EditServicesModal({ visible, onClose, onFinish }: Props) {
+  const { success, error } = useToast();
+
   const [categories, setCategories] = useState<SelectOption[]>([]);
   const [subcategories, setSubcategories] = useState<SelectOption[]>([]);
   const [loadingCats, setLoadingCats] = useState(false);
   const [loadingSubs, setLoadingSubs] = useState(false);
+  const [loadingData, setLoadingData] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const [selectedCatId, setSelectedCatId] = useState<number | null>(null);
   const [selectedSubId, setSelectedSubId] = useState<number | null>(null);
-  const [specialties, setSpecialties] = useState<Specialty[]>([]);
 
-  // Cargar categorías al abrir
+  // Lista mixta: items de BD + items nuevos no guardados
+  const [items, setItems] = useState<ListItem[]>([]);
+
+  // IDs de subcategorías ya presentes (para bloquear duplicados)
+  const usedSubIds = new Set(
+    items.map((i) => (i.source === "saved" ? i.id_subcategoria : i.subcategoryId)),
+  );
+
+  // Cargar categorías y especialidades existentes al abrir
   useEffect(() => {
     if (!visible) return;
+
     setLoadingCats(true);
     getCategorias()
       .then((data) =>
-        setCategories(
-          data.map((c) => ({ label: c.nombre, value: c.id_categoria })),
-        ),
+        setCategories(data.map((c) => ({ label: c.nombre, value: c.id_categoria }))),
       )
       .catch(() => {})
       .finally(() => setLoadingCats(false));
+
+    setLoadingData(true);
+    getTechnicianEspecialidades()
+      .then((data) =>
+        setItems(data.map((e) => ({ ...e, source: "saved" as const }))),
+      )
+      .catch(() => {})
+      .finally(() => setLoadingData(false));
   }, [visible]);
 
   // Cargar subcategorías cuando cambia la categoría
@@ -74,45 +107,87 @@ export function EditServicesModal({ visible, onClose, onFinish }: Props) {
 
   const handleAdd = () => {
     if (!selectedCatId || !selectedSubId) return;
+    if (usedSubIds.has(selectedSubId)) return; // duplicado
 
-    const catName =
-      categories.find((c) => c.value === selectedCatId)?.label ?? "";
-    const subName =
-      subcategories.find((s) => s.value === selectedSubId)?.label ?? "";
+    const catName = categories.find((c) => c.value === selectedCatId)?.label ?? "";
+    const subName = subcategories.find((s) => s.value === selectedSubId)?.label ?? "";
 
-    const alreadyAdded = specialties.some(
-      (s) =>
-        s.categoryId === selectedCatId && s.subcategoryId === selectedSubId,
-    );
-    if (alreadyAdded) return;
-
-    setSpecialties((prev) => [
+    setItems((prev) => [
       ...prev,
       {
+        source: "new",
+        tempId: ++_tempId,
         categoryId: selectedCatId,
         categoryName: catName,
         subcategoryId: selectedSubId,
         subcategoryName: subName,
       },
     ]);
-  };
-
-  const handleRemove = (subId: number) => {
-    setSpecialties((prev) => prev.filter((s) => s.subcategoryId !== subId));
-  };
-
-  const handleClose = () => {
-    setSelectedCatId(null);
     setSelectedSubId(null);
-    setSpecialties([]);
+  };
+
+  const handleRemove = async (item: ListItem) => {
+    if (item.source === "saved") {
+      try {
+        await deleteTechnicianEspecialidad(item.id_especialidad);
+        setItems((prev) =>
+          prev.filter(
+            (i) => !(i.source === "saved" && i.id_especialidad === item.id_especialidad),
+          ),
+        );
+      } catch {
+        error("No se pudo eliminar la especialidad");
+      }
+    } else {
+      setItems((prev) =>
+        prev.filter((i) => !(i.source === "new" && i.tempId === item.tempId)),
+      );
+    }
+  };
+
+  const handleFinish = async () => {
+    const newOnes = items.filter((i) => i.source === "new") as NewItem[];
+
+    if (newOnes.length > 0) {
+      setSaving(true);
+      try {
+        await addTechnicianEspecialidades(
+          newOnes.map((n) => ({
+            id_subcategoria: n.subcategoryId,
+            experiencia: "",
+          })),
+        );
+        success("Especialidades guardadas correctamente");
+      } catch {
+        error("No se pudieron guardar las especialidades");
+        setSaving(false);
+        return;
+      }
+      setSaving(false);
+    }
+
+    resetForm();
+    onFinish();
+  };
+
+  const handleCancel = () => {
+    resetForm();
     onClose();
   };
+
+  const resetForm = () => {
+    setSelectedCatId(null);
+    setSelectedSubId(null);
+    // Quitar solo los items nuevos (los eliminados de BD ya se eliminaron)
+    setItems((prev) => prev.filter((i) => i.source === "saved"));
+  };
+
+  const canAdd = !!selectedCatId && !!selectedSubId && !usedSubIds.has(selectedSubId ?? -1);
 
   return (
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.backdrop}>
         <View style={styles.card}>
-          {/* Título */}
           <Text style={styles.title}>Gestiona tus especialidades</Text>
 
           {/* Selectores */}
@@ -143,57 +218,63 @@ export function EditServicesModal({ visible, onClose, onFinish }: Props) {
 
           {/* Botón Añadir */}
           <TouchableOpacity
-            style={[
-              styles.addBtn,
-              (!selectedCatId || !selectedSubId) && styles.addBtnDisabled,
-            ]}
+            style={[styles.addBtn, !canAdd && styles.addBtnDisabled]}
             onPress={handleAdd}
-            disabled={!selectedCatId || !selectedSubId}
+            disabled={!canAdd}
             activeOpacity={0.8}
           >
             <Text style={styles.addText}>Añadir</Text>
             <FontAwesome5 name="plus" size={15} color="#fff" />
           </TouchableOpacity>
 
-          {/* Lista de especialidades añadidas */}
+          {/* Lista */}
           <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
-            {specialties.length === 0 ? (
-              <Text style={styles.emptyText}>
-                Aún no has añadido especialidades
-              </Text>
+            {loadingData ? (
+              <ActivityIndicator color="#407ee3" style={{ marginTop: 12 }} />
+            ) : items.length === 0 ? (
+              <Text style={styles.emptyText}>Aún no has añadido especialidades</Text>
             ) : (
-              specialties.map((item) => (
-                <View
-                  key={`${item.categoryId}-${item.subcategoryId}`}
-                  style={styles.chip}
-                >
-                  <View style={styles.chipInfo}>
-                    <Text style={styles.chipCategory}>{item.categoryName}</Text>
-                    <Text style={styles.chipSub}>{item.subcategoryName}</Text>
+              items.map((item) => {
+                const isNew = item.source === "new";
+                const catName = isNew ? item.categoryName : (item.categoria ?? "");
+                const subName = isNew ? item.subcategoryName : item.subcategoria;
+                const key = isNew ? `new-${item.tempId}` : `saved-${item.id_especialidad}`;
+
+                return (
+                  <View key={key} style={[styles.chip, isNew && styles.chipNew]}>
+                    <View style={styles.chipInfo}>
+                      {catName ? (
+                        <Text style={styles.chipCategory}>{catName}</Text>
+                      ) : null}
+                      <Text style={styles.chipSub}>{subName}</Text>
+                    </View>
+                    <Pressable onPress={() => handleRemove(item)} hitSlop={8}>
+                      <FontAwesome5 name="trash" size={18} color="#cc2d2d" />
+                    </Pressable>
                   </View>
-                  <Pressable
-                    onPress={() => handleRemove(item.subcategoryId)}
-                    hitSlop={8}
-                  >
-                    <FontAwesome5 name="trash" size={18} color="#cc2d2d" />
-                  </Pressable>
-                </View>
-              ))
+                );
+              })
             )}
           </ScrollView>
 
           {/* Botones fijos */}
           <TouchableOpacity
-            style={styles.finishBtn}
-            onPress={() => onFinish(specialties)}
+            style={[styles.finishBtn, saving && { opacity: 0.6 }]}
+            onPress={handleFinish}
+            disabled={saving}
             activeOpacity={0.8}
           >
-            <Text style={styles.finishText}>Finalizar</Text>
+            {saving ? (
+              <ActivityIndicator color="#000" />
+            ) : (
+              <Text style={styles.finishText}>Finalizar</Text>
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.cancelBtn}
-            onPress={handleClose}
+            onPress={handleCancel}
+            disabled={saving}
             activeOpacity={0.8}
           >
             <Text style={styles.cancelText}>Cancelar</Text>
@@ -215,7 +296,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 12,
     padding: 20,
-    maxHeight: "85%",
+    maxHeight: "90%",
   },
   title: {
     fontSize: 20,
@@ -223,6 +304,24 @@ const styles = StyleSheet.create({
     color: "#5e5e5e",
     textAlign: "center",
     marginBottom: 16,
+  },
+  fieldWrapper: {
+    marginBottom: 12,
+  },
+  fieldLabel: {
+    fontSize: 13,
+    color: "#374151",
+    marginBottom: 5,
+  },
+  experienciaInput: {
+    borderWidth: 1,
+    borderColor: "#407ee3",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    height: 42,
+    fontSize: 14,
+    color: "#374151",
+    backgroundColor: "#fff",
   },
   addBtn: {
     flexDirection: "row",
@@ -264,12 +363,16 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginBottom: 8,
   },
+  chipNew: {
+    borderColor: "#407ee3",
+    backgroundColor: "#eff6ff",
+  },
   chipInfo: {
     flex: 1,
     marginRight: 8,
   },
   chipCategory: {
-    fontSize: 12,
+    fontSize: 11,
     color: "#9ca3af",
     marginBottom: 2,
   },
@@ -277,6 +380,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#374151",
     fontWeight: "500",
+  },
+  chipExp: {
+    fontSize: 12,
+    color: "#6b7280",
+    marginTop: 2,
   },
   finishBtn: {
     backgroundColor: "#f2c70f",

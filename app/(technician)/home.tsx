@@ -1,6 +1,7 @@
 import { updateDisponibilidad } from "@/src/services/technician.service";
 import { useToast } from "@/src/hooks/useToast";
 import { useAuthStore } from "@/src/store/auth.store";
+import * as Location from "expo-location";
 import { useState } from "react";
 import { ActivityIndicator, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
@@ -16,7 +17,25 @@ export default function TechnicianHomeScreen() {
     const next = !active;
     setLoading(true);
     try {
-      await updateDisponibilidad(next);
+      let coords: { latitud: number; longitud: number } | undefined;
+
+      if (next) {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === "granted") {
+          const loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.High,
+          });
+          coords = {
+            latitud: loc.coords.latitude,
+            longitud: loc.coords.longitude,
+          };
+          console.log("[técnico] Coords →", coords);
+        } else {
+          console.warn("[técnico] Permiso de ubicación denegado");
+        }
+      }
+
+      await updateDisponibilidad(next, coords);
       setActive(next);
       updateUser({ disponible: next });
     } catch {
@@ -57,6 +76,7 @@ export default function TechnicianHomeScreen() {
           )}
         </TouchableOpacity>
       </View>
+
     </View>
   );
 }
