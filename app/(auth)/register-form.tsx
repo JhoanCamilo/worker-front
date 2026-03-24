@@ -5,6 +5,7 @@ import { PasswordInput } from "@/src/components/ui/PasswordInput";
 import { SelectAdvanced } from "@/src/components/ui/SelectAdvanced";
 import { useCities } from "@/src/hooks/useCities";
 import { useRegisterForm } from "@/src/hooks/useRegisterForm";
+import { PasswordChecks } from "@/src/utils/validators";
 import { Ionicons } from "@expo/vector-icons";
 import {
   KeyboardAvoidingView,
@@ -14,8 +15,39 @@ import {
   View,
 } from "react-native";
 
+function PasswordChecklist({ checks }: { checks: PasswordChecks }) {
+  const items: { key: keyof PasswordChecks; label: string }[] = [
+    { key: "minLength", label: "Mínimo 8 caracteres" },
+    { key: "hasUppercase", label: "Al menos una mayúscula" },
+    { key: "hasNumber", label: "Al menos un número" },
+    { key: "hasSpecial", label: "Al menos un carácter especial" },
+  ];
+
+  return (
+    <View style={{ marginTop: 6, marginBottom: 4 }}>
+      {items.map(({ key, label }) => (
+        <View
+          key={key}
+          style={{ flexDirection: "row", alignItems: "center", marginBottom: 3 }}
+        >
+          <Ionicons
+            name={checks[key] ? "checkmark-circle" : "close-circle"}
+            size={14}
+            color={checks[key] ? "#4ade80" : "#f87171"}
+            style={{ marginRight: 6 }}
+          />
+          <Text style={{ fontSize: 12, color: checks[key] ? "#4ade80" : "#f87171" }}>
+            {label}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export default function RegisterFormScreen() {
-  const { fields, onNext } = useRegisterForm();
+  const { fields, fieldErrors, passwordChecks, showPasswordChecks, onNext } =
+    useRegisterForm();
   const { options: cityOptions, loading: loadingCities } = useCities();
 
   return (
@@ -43,12 +75,14 @@ export default function RegisterFormScreen() {
           label="Nombres"
           value={fields.name}
           onChangeText={fields.setName}
+          error={fieldErrors.name}
         />
 
         <LabeledInput
           label="Apellidos"
           value={fields.lastName}
           onChangeText={fields.setLastName}
+          error={fieldErrors.lastName}
         />
 
         <SelectAdvanced
@@ -67,18 +101,25 @@ export default function RegisterFormScreen() {
           label="Documento de identidad"
           value={fields.documentNumber}
           onChangeText={fields.setDocumentNumber}
+          keyboardType="numeric"
+          error={fieldErrors.documentNumber}
         />
 
         <LabeledInput
           label="Número de teléfono"
           value={fields.phone}
           onChangeText={fields.setPhone}
+          keyboardType="phone-pad"
+          error={fieldErrors.phone}
         />
 
         <LabeledInput
           label="Correo electrónico"
           value={fields.email}
           onChangeText={fields.setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          error={fieldErrors.email}
         />
 
         <DateInput
@@ -112,11 +153,21 @@ export default function RegisterFormScreen() {
             onChangeText={fields.setPassword}
           />
 
+          {showPasswordChecks && (
+            <PasswordChecklist checks={passwordChecks} />
+          )}
+
           <PasswordInput
             placeholder="Confirmar contraseña"
             value={fields.confirmedPassword}
             onChangeText={fields.setConfirmedPassword}
           />
+
+          {fieldErrors.confirmedPassword ? (
+            <Text style={{ fontSize: 12, color: "#fca5a5", marginTop: -6, marginBottom: 4 }}>
+              {fieldErrors.confirmedPassword}
+            </Text>
+          ) : null}
         </View>
 
         <View style={{ marginTop: 24, marginBottom: 10 }}>

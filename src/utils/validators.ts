@@ -12,43 +12,88 @@ export interface RegisterFormData {
   cityId?: number | null
 }
 
+// ── Validadores individuales ──────────────────────────────────────────────────
+
+export function validateName(name: string): string | null {
+  if (!name.trim()) return 'El nombre es obligatorio'
+  if (/\d/.test(name)) return 'El nombre no puede contener números'
+  return null
+}
+
+export function validateLastName(lastName: string): string | null {
+  if (!lastName.trim()) return 'El apellido es obligatorio'
+  if (/\d/.test(lastName)) return 'El apellido no puede contener números'
+  return null
+}
+
+export function validateDocumentNumber(doc: string): string | null {
+  if (!doc.trim()) return 'El documento de identidad es obligatorio'
+  if (!/^\d{6,12}$/.test(doc)) return 'La cédula debe tener entre 6 y 12 dígitos'
+  return null
+}
+
+export function validatePhone(phone: string): string | null {
+  if (!phone.trim()) return 'El número de teléfono es obligatorio'
+  if (!/^\d+$/.test(phone)) return 'El teléfono solo debe contener dígitos'
+  if (phone.length < 10) return 'El teléfono debe tener mínimo 10 dígitos'
+  return null
+}
+
+export interface PasswordChecks {
+  minLength: boolean
+  hasUppercase: boolean
+  hasNumber: boolean
+  hasSpecial: boolean
+}
+
+export function checkPassword(password: string): PasswordChecks {
+  return {
+    minLength: password.length >= 8,
+    hasUppercase: /[A-Z]/.test(password),
+    hasNumber: /\d/.test(password),
+    hasSpecial: /[!@#$%^&*()\-_=+\[\]{};':"\\|,.<>/?]/.test(password),
+  }
+}
+
+export function validatePassword(password: string): string | null {
+  if (!password) return 'La contraseña es obligatoria'
+  const c = checkPassword(password)
+  if (!c.minLength) return 'La contraseña debe tener al menos 8 caracteres'
+  if (!c.hasUppercase) return 'Debe contener al menos una mayúscula'
+  if (!c.hasNumber) return 'Debe contener al menos un número'
+  if (!c.hasSpecial) return 'Debe contener al menos un carácter especial'
+  return null
+}
+
+// ── Validación completa del formulario ────────────────────────────────────────
+
 export function validateRegisterForm(data: RegisterFormData): string | null {
-  if (!data.name.trim()) return 'El nombre es obligatorio'
+  const nameErr = validateName(data.name)
+  if (nameErr) return nameErr
 
-  if (!data.lastName.trim()) return 'El apellido es obligatorio'
+  const lastNameErr = validateLastName(data.lastName)
+  if (lastNameErr) return lastNameErr
 
-  if (!data.documentType)
-    return 'Seleccione un tipo de documento'
+  if (!data.documentType) return 'Seleccione un tipo de documento'
 
-  if (!data.documentNumber.trim())
-    return 'El documento de identidad es obligatorio'
+  const docErr = validateDocumentNumber(data.documentNumber)
+  if (docErr) return docErr
 
-  if (!data.phone.trim())
-    return 'El número de teléfono es obligatorio'
+  const phoneErr = validatePhone(data.phone)
+  if (phoneErr) return phoneErr
 
-  if (!/^\d{7,15}$/.test(data.phone))
-    return 'El número de teléfono no es válido'
+  if (!data.email.trim()) return 'El correo electrónico es obligatorio'
+  if (!/^\S+@\S+\.\S+$/.test(data.email)) return 'El correo electrónico no es válido'
 
-  if (!data.email.trim())
-    return 'El correo electrónico es obligatorio'
+  if (!data.birthDate) return 'La fecha de nacimiento es obligatoria'
 
-  if (!/^\S+@\S+\.\S+$/.test(data.email))
-    return 'El correo electrónico no es válido'
+  const passErr = validatePassword(data.password)
+  if (passErr) return passErr
 
-  if (!data.birthDate)
-    return 'La fecha de nacimiento es obligatoria'
+  if (!data.confirmedPassword) return 'Confirme la contraseña'
+  if (data.password !== data.confirmedPassword) return 'Las contraseñas no coinciden'
 
-  if (!data.password)
-    return 'La contraseña es obligatoria'
-
-  if (!data.confirmedPassword)
-    return 'Confirme la contraseña'
-
-  if (data.password !== data.confirmedPassword)
-    return 'Las contraseñas no coinciden'
-
-  if (!data.cityId)
-    return 'Seleccione una ciudad'
+  if (!data.cityId) return 'Seleccione una ciudad'
 
   return null
 }
