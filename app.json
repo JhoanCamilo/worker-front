@@ -12,7 +12,8 @@
       "supportsTablet": true
     },
     "android": {
-      "package": "com.workerapp.mobile",
+      "package": "com.workerapp.app",
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -68,8 +69,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "568a0f3e-5347-487c-95ce-69c8db8b4ef9"
+        "projectId": "2a0af14e-160b-42ec-88ae-8455a1f33d4f"
       }
-    }
+    },
+    "owner": "ortega2193"
   }
 }
