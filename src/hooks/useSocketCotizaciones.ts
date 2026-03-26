@@ -1,9 +1,9 @@
 import { createSocket } from "@/src/services/socket";
 import { useAuthStore } from "@/src/store/auth.store";
 import {
-  BatchListasPayload,
-  CotizacionPayload,
-  RechazoPayload,
+    BatchListasPayload,
+    CotizacionPayload,
+    RechazoPayload,
 } from "@/src/types/socket.types";
 import { useEffect, useRef } from "react";
 import { Socket } from "socket.io-client";
@@ -25,6 +25,9 @@ interface Options {
  * Hook para el namespace /cotizaciones.
  * - CLIENTE: se suscribe a cotizaciones de su solicitud activa.
  * - TÉCNICO: escucha el resultado de sus cotizaciones enviadas.
+ *
+ * Usa refs para los callbacks para evitar re-crear el socket cuando
+ * los callbacks cambian (stale closure fix).
  */
 export function useSocketCotizaciones({
   idSolicitud,
@@ -36,6 +39,20 @@ export function useSocketCotizaciones({
   const token = useAuthStore((s) => s.token);
   const socketRef = useRef<Socket | null>(null);
 
+  // Refs para callbacks — evita stale closures
+  const cbRefs = useRef({
+    onNuevaCotizacion,
+    onCotizacionesListas,
+    onCotizacionAceptada,
+    onCotizacionRechazada,
+  });
+  cbRefs.current = {
+    onNuevaCotizacion,
+    onCotizacionesListas,
+    onCotizacionAceptada,
+    onCotizacionRechazada,
+  };
+
   useEffect(() => {
     if (!token) return;
 
@@ -43,29 +60,46 @@ export function useSocketCotizaciones({
     socketRef.current = socket;
 
     socket.on("connect", () => {
+      console.log("[socket/cotizaciones] ✅ Conectado. id:", socket.id);
       if (idSolicitud) {
+        console.log(
+          "[socket/cotizaciones] Joining room solicitud:",
+          idSolicitud,
+        );
         socket.emit("client:join_cotizaciones", { id_solicitud: idSolicitud });
       }
     });
 
+    socket.on("disconnect", (reason) => {
+      console.log("[socket/cotizaciones] 🔌 Desconectado:", reason);
+    });
+
     socket.on("server:nueva_cotizacion", (data: CotizacionPayload) => {
-      onNuevaCotizacion?.(data);
+      console.log("[socket/cotizaciones] 💰 nueva_cotizacion:", data);
+      cbRefs.current.onNuevaCotizacion?.(data);
     });
 
     socket.on("server:cotizaciones_listas", (data: BatchListasPayload) => {
-      onCotizacionesListas?.(data);
+      console.log("[socket/cotizaciones] ✅ cotizaciones_listas:", data);
+      cbRefs.current.onCotizacionesListas?.(data);
     });
 
     socket.on("server:cotizacion_aceptada", (data: CotizacionPayload) => {
-      onCotizacionAceptada?.(data);
+      console.log("[socket/cotizaciones] ✅ cotizacion_aceptada:", data);
+      cbRefs.current.onCotizacionAceptada?.(data);
     });
 
     socket.on("server:cotizacion_rechazada", (data: RechazoPayload) => {
-      onCotizacionRechazada?.(data);
+      console.log("[socket/cotizaciones] ❌ cotizacion_rechazada:", data);
+      cbRefs.current.onCotizacionRechazada?.(data);
     });
 
     socket.on("server:error", (err: { message: string }) => {
-      console.warn("[socket/cotizaciones] error:", err.message);
+      console.warn("[socket/cotizaciones] ⚠️ error:", err.message);
+    });
+
+    socket.on("connect_error", (err) => {
+      console.error("[socket/cotizaciones] ❌ connect_error:", err.message);
     });
 
     socket.connect();
@@ -73,7 +107,6 @@ export function useSocketCotizaciones({
     return () => {
       socket.disconnect();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, idSolicitud]);
 
   return { socket: socketRef };

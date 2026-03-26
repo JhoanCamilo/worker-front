@@ -1,5 +1,6 @@
 import { ApiCategoria, getCategorias } from "@/src/services/category.service";
-import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -12,8 +13,11 @@ import {
 
 export default function ServiceCategoryScreen() {
   const router = useRouter();
+  const { modo } = useLocalSearchParams<{ modo: string }>();
   const [categories, setCategories] = useState<ApiCategoria[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const esInmediata = modo === "INMEDIATA";
 
   useEffect(() => {
     getCategorias()
@@ -25,21 +29,25 @@ export default function ServiceCategoryScreen() {
   const handleSelect = (cat: ApiCategoria) => {
     router.push({
       pathname: "/service-subcategory",
-      params: { categoryId: cat.id_categoria, categoryName: cat.nombre },
+      params: { categoryId: cat.id_categoria, categoryName: cat.nombre, modo: modo ?? "INMEDIATA" },
     });
   };
 
   return (
     <View style={styles.screen}>
-      {/* Header amarillo */}
+      {/* Header amarillo con back */}
       <View style={styles.topBar}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Ionicons name="chevron-back" size={26} color="#000" />
+        </TouchableOpacity>
         <Text style={styles.topBarText}>
-          ¿Cómo podemos ayudarte el día de hoy?
+          {esInmediata ? "Servicio inmediato" : "Agendar servicio"}
         </Text>
+        <View style={{ width: 34 }} />
       </View>
 
       {/* Título */}
-      <Text style={styles.title}>¿Cuál es tu emergencia?</Text>
+      <Text style={styles.title}>¿Qué tipo de servicio necesitas?</Text>
 
       {/* Lista de categorías (scrollable) */}
       <ScrollView
@@ -86,10 +94,15 @@ const styles = StyleSheet.create({
     backgroundColor: "#f2c70f",
     paddingTop: 52,
     paddingBottom: 16,
-    paddingHorizontal: 24,
+    paddingHorizontal: 16,
+    flexDirection: "row",
     alignItems: "center",
   },
+  backBtn: {
+    width: 34,
+  },
   topBarText: {
+    flex: 1,
     fontSize: 16,
     fontWeight: "700",
     color: "#000",

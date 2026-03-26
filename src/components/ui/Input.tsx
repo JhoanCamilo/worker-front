@@ -1,8 +1,8 @@
-import { View, TextInput, Pressable, Text } from 'react-native'
+import { View, TextInput, TextInputProps, Pressable, Text } from 'react-native'
 import { useState } from 'react'
 import AntDesign from '@expo/vector-icons/AntDesign';
 
-interface InputProps {
+interface InputProps extends Omit<TextInputProps, 'style'> {
   value: string
   onChangeText: (text: string) => void
   placeholder?: string
@@ -20,7 +20,7 @@ export function Input({
     <View
       style={{
         borderWidth: 1.5,
-        borderColor: '#8f8f8f', // azul
+        borderColor: '#8f8f8f',
         borderRadius: 8,
         paddingHorizontal: 12,
         flexDirection: 'row',
@@ -29,11 +29,13 @@ export function Input({
       }}
     >
       <TextInput
+        placeholderTextColor="#6b7280"
         {...props}
         secureTextEntry={isPassword && !showPassword}
         style={{
           flex: 1,
           height: 44,
+          color: '#111827',
         }}
       />
 

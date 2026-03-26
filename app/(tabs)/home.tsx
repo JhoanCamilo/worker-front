@@ -12,16 +12,18 @@ export default function ClientHomeScreen() {
         <TouchableOpacity
           style={styles.helpButton}
           activeOpacity={0.8}
-          onPress={() => router.push("/service-category")}
+          onPress={() => router.push({ pathname: "/service-category", params: { modo: "INMEDIATA" } })}
         >
-          <Text style={styles.helpText}>
-            ¿Cómo podemos ayudarte el día de hoy?
-          </Text>
+          <Text style={styles.helpText}>Necesito ayuda ahora</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.scheduleButton} activeOpacity={0.8}>
+        <TouchableOpacity
+          style={styles.scheduleButton}
+          activeOpacity={0.8}
+          onPress={() => router.push({ pathname: "/service-category", params: { modo: "PROGRAMADA" } })}
+        >
           <Ionicons name="calendar" size={20} color="#000" />
-          <Text style={styles.scheduleText}>Agendar Servicio</Text>
+          <Text style={styles.scheduleText}>Agendar servicio</Text>
         </TouchableOpacity>
       </View>
 

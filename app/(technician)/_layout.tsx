@@ -1,6 +1,11 @@
 import { SolicitudDisponibleModal } from "@/src/components/ui/SolicitudDisponibleModal";
+import { useSocketCotizaciones } from "@/src/hooks/useSocketCotizaciones";
 import { useSocketSolicitudes } from "@/src/hooks/useSocketSolicitudes";
+import { useToast } from "@/src/hooks/useToast";
+import { getSolicitudDetalle } from "@/src/services/solicitud.service";
 import { useAuthStore } from "@/src/store/auth.store";
+import { useServicioStore } from "@/src/store/servicio.store";
+import { extraerCoordenadas } from "@/src/utils/coordinates";
 import { NuevaSolicitudPayload } from "@/src/types/socket.types";
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs, useRouter } from "expo-router";
@@ -25,8 +30,10 @@ function HeaderTitle() {
 
 export default function TechnicianLayout() {
   const router = useRouter();
+  const { success: showSuccess, error: showError } = useToast();
 
   const disponible = useAuthStore((s) => s.user?.disponible ?? false);
+  const setServicioActivo = useServicioStore((s) => s.setServicioActivo);
   const [solicitudActiva, setSolicitudActiva] = useState<NuevaSolicitudPayload | null>(null);
 
   useSocketSolicitudes({
@@ -37,10 +44,55 @@ export default function TechnicianLayout() {
     },
     onSolicitudCancelada: ({ id_solicitud }) => {
       console.log("[socket] Solicitud cancelada →", id_solicitud);
-      // Cerrar el modal si la solicitud activa fue cancelada
       if (solicitudActiva?.id_solicitud === id_solicitud) {
         setSolicitudActiva(null);
       }
+    },
+  });
+
+  // ── Socket: resultado de cotizaciones enviadas ────────────────
+  useSocketCotizaciones({
+    onCotizacionAceptada: (data) => {
+      console.log("[socket] ✅ Cotización aceptada →", data);
+      console.log("[socket] Datos completos del evento:", JSON.stringify(data));
+      showSuccess("¡Tu cotización fue aceptada!");
+
+      getSolicitudDetalle(data.id_solicitud)
+        .then((solicitud) => {
+          console.log("[layout] Solicitud detalle recibida:", JSON.stringify(solicitud));
+          const coords = extraerCoordenadas(solicitud);
+
+          if (!coords) {
+            console.warn("[layout] ⚠️ No se pudieron extraer coordenadas del cliente de la solicitud");
+            showError("No se pudo obtener la ubicación del servicio");
+            return;
+          }
+
+          console.log("[layout] Coordenadas del cliente extraídas:", coords);
+
+          setServicioActivo({
+            id_servicio: 0,
+            id_solicitud: data.id_solicitud,
+            id_tecnico: data.id_tecnico,
+            id_estado: solicitud.id_estado,
+            valor_total: data.valor_cotizacion,
+            cliente_lat: coords.lat,
+            cliente_lon: coords.lon,
+          });
+
+          router.push({
+            pathname: "/(flows)/servicio-activo",
+            params: { idSolicitud: String(data.id_solicitud) },
+          });
+        })
+        .catch((err) => {
+          console.warn("[layout] Error al obtener solicitud:", err);
+          showError("No se pudo cargar los datos del servicio");
+        });
+    },
+    onCotizacionRechazada: (data) => {
+      console.log("[socket] ❌ Cotización rechazada →", data);
+      showError("Tu cotización fue rechazada por el cliente.");
     },
   });
 

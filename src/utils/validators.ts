@@ -16,12 +16,14 @@ export interface RegisterFormData {
 
 export function validateName(name: string): string | null {
   if (!name.trim()) return 'El nombre es obligatorio'
+  if (name.trim().length < 2) return 'El nombre debe tener al menos 2 caracteres'
   if (/\d/.test(name)) return 'El nombre no puede contener números'
   return null
 }
 
 export function validateLastName(lastName: string): string | null {
   if (!lastName.trim()) return 'El apellido es obligatorio'
+  if (lastName.trim().length < 2) return 'El apellido debe tener al menos 2 caracteres'
   if (/\d/.test(lastName)) return 'El apellido no puede contener números'
   return null
 }

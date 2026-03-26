@@ -16,9 +16,10 @@ import {
 
 export default function ServiceSubcategoryScreen() {
   const router = useRouter();
-  const { categoryId, categoryName } = useLocalSearchParams<{
+  const { categoryId, categoryName, modo } = useLocalSearchParams<{
     categoryId: string;
     categoryName: string;
+    modo: string;
   }>();
 
   const [subcategories, setSubcategories] = useState<ApiSubcategoria[]>([]);
@@ -40,6 +41,7 @@ export default function ServiceSubcategoryScreen() {
         categoryName,
         subcategoryId: String(sub.id_subcategoria),
         subcategoryName: sub.nombre,
+        modo: modo ?? "INMEDIATA",
       },
     });
   };
@@ -47,7 +49,7 @@ export default function ServiceSubcategoryScreen() {
   const handleSkip = () => {
     router.push({
       pathname: "/service-detail",
-      params: { categoryId, categoryName, subcategoryId: "", subcategoryName: "" },
+      params: { categoryId, categoryName, subcategoryId: "", subcategoryName: "", modo: modo ?? "INMEDIATA" },
     });
   };
 
@@ -59,17 +61,17 @@ export default function ServiceSubcategoryScreen() {
           <Ionicons name="chevron-back" size={26} color="#000" />
         </TouchableOpacity>
         <Text style={styles.topBarText}>
-          ¿Puedes identificar el tipo de problema?
+          {categoryName}
         </Text>
         {/* Spacer para centrar el texto */}
         <View style={{ width: 34 }} />
       </View>
 
       {/* Título y descripción */}
-      <Text style={styles.title}>¿Sabes cuál es la posible causa?</Text>
+      <Text style={styles.title}>¿Qué servicio necesitas?</Text>
       <Text style={styles.subtitle}>
-        Esto ayuda a nuestros técnicos a darte una cotización más precisa, pero
-        si no lo sabes, no hay problema.
+        Selecciona el servicio que mejor describa lo que necesitas. Si no estás
+        seguro, puedes omitir este paso.
       </Text>
 
       {/* Lista de subcategorías (scrollable) */}

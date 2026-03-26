@@ -62,7 +62,13 @@ export default function LoginScreen() {
         </View>
 
         {/* Inputs */}
-        <Input placeholder="Usuario" value={email} onChangeText={setEmail} />
+        <Input
+          placeholder="Correo electrónico"
+          value={email}
+          onChangeText={(t) => setEmail(t.toLowerCase().trim())}
+          autoCapitalize="none"
+          keyboardType="email-address"
+        />
 
         <Input
           placeholder="Contraseña"

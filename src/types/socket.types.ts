@@ -22,9 +22,10 @@ export interface NuevaSolicitudPayload {
   descripcion: string;
   tipo_solicitud: "INMEDIATA" | "PROGRAMADA";
   prioridad: "BAJA" | "MEDIA" | "ALTA" | "URGENTE";
-  direccion_servicio: string;
+  direccion_servicio: string | null; // texto de la dirección ingresada por el cliente
   distancia_metros: number;
   priority_score: number;
+  fecha_programada?: string;
 }
 
 export interface CotizacionPayload {
@@ -41,6 +42,7 @@ export interface BatchListasPayload {
   id_solicitud: number;
   total_cotizaciones: number;
   razon: "TIMEOUT" | "MAX_COTIZACIONES";
+  mensaje?: string; // texto en español listo para mostrar en UI
 }
 
 export interface RechazoPayload {

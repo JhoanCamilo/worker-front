@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import * as Location from "expo-location";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
@@ -17,12 +18,15 @@ import {
 
 export default function ServiceDetailScreen() {
   const router = useRouter();
-  const { categoryId, categoryName, subcategoryId, subcategoryName } = useLocalSearchParams<{
+  const { categoryId, categoryName, subcategoryId, subcategoryName, modo } = useLocalSearchParams<{
     categoryId: string;
     categoryName: string;
     subcategoryId: string;
     subcategoryName: string;
+    modo: string;
   }>();
+
+  const esProgramada = modo === "PROGRAMADA";
 
   const [address, setAddress] = useState("");
   const [complement, setComplement] = useState("");
@@ -30,6 +34,13 @@ export default function ServiceDetailScreen() {
   const [useLocation, setUseLocation] = useState(false);
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
+  const [addressError, setAddressError] = useState(false);
+
+  // ── Agendamiento ──────────────────────────────────────────────
+  const [scheduledDate, setScheduledDate] = useState<Date | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [dateError, setDateError] = useState(false);
 
   const screenTitle =
     subcategoryName
@@ -73,6 +84,82 @@ export default function ServiceDetailScreen() {
     }
   };
 
+  const handleDateChange = (_: DateTimePickerEvent, selected?: Date) => {
+    setShowDatePicker(false);
+    if (selected) {
+      // Mantener la hora si ya se seleccionó antes
+      const updated = scheduledDate ? new Date(scheduledDate) : new Date();
+      updated.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
+      setScheduledDate(updated);
+      setDateError(false);
+      // Mostrar picker de hora después de seleccionar fecha
+      setTimeout(() => setShowTimePicker(true), 300);
+    }
+  };
+
+  const handleTimeChange = (_: DateTimePickerEvent, selected?: Date) => {
+    setShowTimePicker(false);
+    if (selected && scheduledDate) {
+      const updated = new Date(scheduledDate);
+      updated.setHours(selected.getHours(), selected.getMinutes());
+      setScheduledDate(updated);
+    }
+  };
+
+  const formatDate = (date: Date): string => {
+    const dias = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+    const meses = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+    const dia = dias[date.getDay()];
+    const numDia = date.getDate();
+    const mes = meses[date.getMonth()];
+    const hora = date.getHours();
+    const min = String(date.getMinutes()).padStart(2, "0");
+    const ampm = hora >= 12 ? "PM" : "AM";
+    const hora12 = hora % 12 || 12;
+    return `${dia} ${numDia} ${mes} - ${hora12}:${min} ${ampm}`;
+  };
+
+  const handleSubmit = () => {
+    if (!address.trim() && !useLocation) {
+      setAddressError(true);
+      return;
+    }
+    if (esProgramada && !scheduledDate) {
+      setDateError(true);
+      return;
+    }
+    // Validar que la fecha sea al menos 2 horas en el futuro
+    if (esProgramada && scheduledDate) {
+      const minTime = new Date(Date.now() + 2 * 60 * 60 * 1000);
+      if (scheduledDate < minTime) {
+        Alert.alert("Fecha muy cercana", "El servicio programado debe ser al menos 2 horas en el futuro.");
+        return;
+      }
+    }
+
+    router.push({
+      pathname: "/searching",
+      params: {
+        categoryId: categoryId ?? "",
+        categoryName: categoryName ?? "",
+        subcategoryId: subcategoryId ?? "",
+        subcategoryName: subcategoryName ?? "",
+        address,
+        complement,
+        description,
+        lat: coords ? String(coords.lat) : "",
+        lon: coords ? String(coords.lon) : "",
+        modo: modo ?? "INMEDIATA",
+        fechaProgramada: scheduledDate ? scheduledDate.toISOString() : "",
+      },
+    });
+  };
+
+  // Fecha mínima: mañana
+  const minDate = new Date();
+  minDate.setDate(minDate.getDate() + 1);
+  minDate.setHours(7, 0, 0, 0);
+
   return (
     <KeyboardAvoidingView
       style={styles.screen}
@@ -83,7 +170,9 @@ export default function ServiceDetailScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={26} color="#000" />
         </TouchableOpacity>
-        <Text style={styles.topBarText}>Datos de la solicitud</Text>
+        <Text style={styles.topBarText}>
+          {esProgramada ? "Agendar servicio" : "Datos de la solicitud"}
+        </Text>
         <View style={{ width: 34 }} />
       </View>
 
@@ -97,16 +186,57 @@ export default function ServiceDetailScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        {/* Fecha y hora (solo programada) */}
+        {esProgramada && (
+          <View style={styles.fieldWrapper}>
+            <Text style={styles.label}>¿Para cuándo lo necesitas?</Text>
+            <TouchableOpacity
+              style={[styles.dateBtn, dateError && styles.inputError]}
+              activeOpacity={0.7}
+              onPress={() => setShowDatePicker(true)}
+            >
+              <Ionicons name="calendar-outline" size={20} color="#407ee3" />
+              <Text style={[styles.dateText, !scheduledDate && { color: "#6b7280" }]}>
+                {scheduledDate ? formatDate(scheduledDate) : "Selecciona fecha y hora"}
+              </Text>
+            </TouchableOpacity>
+            {dateError && (
+              <Text style={styles.errorText}>Debes seleccionar fecha y hora</Text>
+            )}
+            <Text style={styles.scheduleHint}>
+              Al agendar, el técnico se compromete a atenderte en la fecha y hora seleccionada
+            </Text>
+          </View>
+        )}
+
         {/* Dirección */}
         <View style={styles.fieldWrapper}>
-          <Text style={styles.label}>¿Donde?</Text>
+          <Text style={styles.label}>¿Dónde necesitas el servicio?</Text>
           <TextInput
             value={address}
-            onChangeText={setAddress}
-            placeholder="Escribe tu dirección"
-            placeholderTextColor="#9ca3af"
-            style={styles.input}
+            onChangeText={(t) => { setAddress(t); setAddressError(false); }}
+            placeholder="Ej: Calle 5 #23-45, Barrio San Fernando"
+            placeholderTextColor="#6b7280"
+            style={[styles.input, addressError && styles.inputError]}
           />
+          {addressError && (
+            <Text style={styles.errorText}>Debes ingresar una dirección o usar tu ubicación</Text>
+          )}
+
+          {/* Checkbox ubicación — debajo del campo de dirección */}
+          <Pressable
+            style={styles.checkRow}
+            onPress={handleLocationToggle}
+            disabled={loadingLocation}
+          >
+            <View style={[styles.checkbox, useLocation && styles.checkboxOn]}>
+              {useLocation && <Ionicons name="checkmark" size={14} color="#fff" />}
+              {loadingLocation && !useLocation && (
+                <Ionicons name="sync" size={12} color="#407ee3" />
+              )}
+            </View>
+            <Text style={styles.checkLabel}>Usar mi ubicación actual</Text>
+          </Pressable>
         </View>
 
         {/* Complemento */}
@@ -116,25 +246,10 @@ export default function ServiceDetailScreen() {
             value={complement}
             onChangeText={setComplement}
             placeholder="Ej: Apto 301, Torre B"
-            placeholderTextColor="#9ca3af"
+            placeholderTextColor="#6b7280"
             style={styles.input}
           />
         </View>
-
-        {/* Checkbox ubicación */}
-        <Pressable
-          style={styles.checkRow}
-          onPress={handleLocationToggle}
-          disabled={loadingLocation}
-        >
-          <View style={[styles.checkbox, useLocation && styles.checkboxOn]}>
-            {useLocation && <Ionicons name="checkmark" size={14} color="#fff" />}
-            {loadingLocation && !useLocation && (
-              <Ionicons name="sync" size={12} color="#407ee3" />
-            )}
-          </View>
-          <Text style={styles.checkLabel}>Usar mi ubicación actual</Text>
-        </Pressable>
 
         {/* Descripción */}
         <View style={styles.fieldWrapper}>
@@ -144,8 +259,8 @@ export default function ServiceDetailScreen() {
           <TextInput
             value={description}
             onChangeText={(t) => setDescription(t.slice(0, 250))}
-            placeholder="Describe brevemente el problema..."
-            placeholderTextColor="#9ca3af"
+            placeholder="Ej: Se dañó la tubería del lavamanos y gotea"
+            placeholderTextColor="#6b7280"
             multiline
             textAlignVertical="top"
             style={styles.textarea}
@@ -159,24 +274,11 @@ export default function ServiceDetailScreen() {
         <TouchableOpacity
           style={styles.requestBtn}
           activeOpacity={0.8}
-          onPress={() =>
-            router.push({
-              pathname: "/searching",
-              params: {
-                categoryId: categoryId ?? "",
-                categoryName: categoryName ?? "",
-                subcategoryId: subcategoryId ?? "",
-                subcategoryName: subcategoryName ?? "",
-                address,
-                complement,
-                description,
-                lat: coords ? String(coords.lat) : "",
-                lon: coords ? String(coords.lon) : "",
-              },
-            })
-          }
+          onPress={handleSubmit}
         >
-          <Text style={styles.requestText}>Solicitar</Text>
+          <Text style={styles.requestText}>
+            {esProgramada ? "Agendar" : "Solicitar"}
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -187,6 +289,24 @@ export default function ServiceDetailScreen() {
           <Text style={styles.cancelText}>Cancelar</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Date/Time pickers */}
+      {showDatePicker && (
+        <DateTimePicker
+          value={scheduledDate ?? minDate}
+          mode="date"
+          minimumDate={minDate}
+          onChange={handleDateChange}
+        />
+      )}
+      {showTimePicker && (
+        <DateTimePicker
+          value={scheduledDate ?? new Date()}
+          mode="time"
+          is24Hour={false}
+          onChange={handleTimeChange}
+        />
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -246,14 +366,45 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     height: 44,
     fontSize: 14,
-    color: "#5e5e5e",
+    color: "#111827",
     backgroundColor: "#fff",
+  },
+  inputError: {
+    borderColor: "#cc2d2d",
+  },
+  errorText: {
+    fontSize: 12,
+    color: "#cc2d2d",
+    marginTop: 4,
+  },
+  dateBtn: {
+    borderWidth: 1.5,
+    borderColor: "#407ee3",
+    borderRadius: 5,
+    paddingHorizontal: 12,
+    height: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "#fff",
+  },
+  dateText: {
+    fontSize: 14,
+    color: "#374151",
+    fontWeight: "500",
+  },
+  scheduleHint: {
+    fontSize: 11,
+    color: "#f59e0b",
+    marginTop: 6,
+    fontWeight: "500",
+    lineHeight: 16,
   },
   checkRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    marginBottom: 20,
+    marginTop: 10,
   },
   checkbox: {
     width: 22,
@@ -281,12 +432,12 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     height: 120,
     fontSize: 14,
-    color: "#5e5e5e",
+    color: "#111827",
     backgroundColor: "#fff",
   },
   charCount: {
     fontSize: 11,
-    color: "#9ca3af",
+    color: "#6b7280",
     textAlign: "right",
     marginTop: 4,
   },
