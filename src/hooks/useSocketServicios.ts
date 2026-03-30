@@ -1,7 +1,11 @@
 import { logRealtimeEvento } from "@/src/services/realtime-log.service";
 import { createSocket } from "@/src/services/socket";
 import { useAuthStore } from "@/src/store/auth.store";
-import { CalificacionPayload, ServicioPayload } from "@/src/types/socket.types";
+import {
+    CalificacionPayload,
+    PagoConfirmadoPayload,
+    ServicioPayload,
+} from "@/src/types/socket.types";
 import { useEffect, useRef } from "react";
 import { Socket } from "socket.io-client";
 
@@ -10,6 +14,8 @@ interface Options {
   onServicioIniciado?: (data: ServicioPayload) => void;
   /** (CLIENTE) El técnico finalizó el servicio */
   onServicioFinalizado?: (data: ServicioPayload) => void;
+  /** (TECNICO) El cliente confirmó el pago */
+  onPagoConfirmado?: (data: PagoConfirmadoPayload) => void;
   /** (TECNICO) El cliente calificó el servicio */
   onCalificacionRecibida?: (data: CalificacionPayload) => void;
 }
@@ -25,6 +31,7 @@ interface Options {
 export function useSocketServicios({
   onServicioIniciado,
   onServicioFinalizado,
+  onPagoConfirmado,
   onCalificacionRecibida,
 }: Options = {}) {
   const token = useAuthStore((s) => s.token);
@@ -54,6 +61,16 @@ export function useSocketServicios({
         idTecnico: data.id_tecnico,
       });
       onServicioFinalizado?.(data);
+    });
+
+    socket.on("server:pago_confirmado", (data: PagoConfirmadoPayload) => {
+      void logRealtimeEvento({
+        canal: "WS",
+        evento: "server:pago_confirmado",
+        idSolicitud: data.id_solicitud,
+        idTecnico: data.id_tecnico,
+      });
+      onPagoConfirmado?.(data);
     });
 
     socket.on("server:calificacion_recibida", (data: CalificacionPayload) => {

@@ -25,6 +25,7 @@ import {
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 
 type Fase = "EN_CAMINO" | "LLEGO" | "EN_SERVICIO" | "FINALIZADO";
+const MEDIO_PAGO_EFECTIVO = 1;
 
 export default function ServicioActivoScreen() {
   const { idSolicitud, idServicio: idServicioParam } = useLocalSearchParams<{
@@ -117,6 +118,13 @@ export default function ServicioActivoScreen() {
 
   // ── Socket: lifecycle del servicio ──────────────────────────────
   useSocketServicios({
+    onPagoConfirmado: () => {
+      showSuccess("Pago confirmado. Servicio cerrado correctamente");
+      clearServicioActivo();
+      setTimeout(() => {
+        router.replace("/(tabs)/home");
+      }, 1200);
+    },
     onCalificacionRecibida: (data) => {
       showSuccess(`¡Calificación recibida: ${data.puntuacion}⭐!`);
       clearServicioActivo();
@@ -239,9 +247,16 @@ export default function ServicioActivoScreen() {
     setShowPaymentModal(false);
     setActionLoading(true);
     try {
-      await finalizarServicio(idServicio, monto);
+      await finalizarServicio(idServicio, {
+        id_medioPago: MEDIO_PAGO_EFECTIVO,
+        valor_total: monto,
+      });
       setFase("FINALIZADO");
-      showSuccess("Servicio finalizado. Esperando calificación...");
+      clearServicioActivo();
+      showSuccess("Servicio finalizado. Esperando confirmación del cliente...");
+      setTimeout(() => {
+        router.replace("/(tabs)/home");
+      }, 250);
     } catch (err: any) {
       const msg =
         err?.response?.data?.message ?? "No se pudo finalizar el servicio";
@@ -375,7 +390,7 @@ export default function ServicioActivoScreen() {
 
         {fase === "FINALIZADO" && (
           <Text style={styles.infoText}>
-            Esperando calificación del cliente...
+            Esperando confirmación de pago del cliente...
           </Text>
         )}
       </View>

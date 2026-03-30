@@ -59,6 +59,15 @@ export interface ServicioPayload {
   valor_total?: number;
 }
 
+export interface PagoConfirmadoPayload {
+  id_solicitud: number;
+  id_servicio: number;
+  id_transaccion: number;
+  id_tecnico: number;
+  monto_tecnico: number;
+  estado_pago: string;
+}
+
 export interface CalificacionPayload {
   id_servicio: number;
   id_cliente: number;
