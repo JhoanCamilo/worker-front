@@ -1,3 +1,4 @@
+import { logRealtimeEvento } from "@/src/services/realtime-log.service";
 import { createSocket } from "@/src/services/socket";
 import { useAuthStore } from "@/src/store/auth.store";
 import { CalificacionPayload, ServicioPayload } from "@/src/types/socket.types";
@@ -36,14 +37,30 @@ export function useSocketServicios({
     socketRef.current = socket;
 
     socket.on("server:servicio_iniciado", (data: ServicioPayload) => {
+      void logRealtimeEvento({
+        canal: "WS",
+        evento: "server:servicio_iniciado",
+        idSolicitud: data.id_solicitud,
+        idTecnico: data.id_tecnico,
+      });
       onServicioIniciado?.(data);
     });
 
     socket.on("server:servicio_finalizado", (data: ServicioPayload) => {
+      void logRealtimeEvento({
+        canal: "WS",
+        evento: "server:servicio_finalizado",
+        idSolicitud: data.id_solicitud,
+        idTecnico: data.id_tecnico,
+      });
       onServicioFinalizado?.(data);
     });
 
     socket.on("server:calificacion_recibida", (data: CalificacionPayload) => {
+      void logRealtimeEvento({
+        canal: "WS",
+        evento: "server:calificacion_recibida",
+      });
       onCalificacionRecibida?.(data);
     });
 
@@ -56,7 +73,7 @@ export function useSocketServicios({
     return () => {
       socket.disconnect();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   return { socket: socketRef };

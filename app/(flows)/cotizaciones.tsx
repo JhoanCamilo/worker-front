@@ -5,6 +5,10 @@ import {
     CotizacionItem,
     getCotizacionesBySolicitud,
 } from "@/src/services/cotizacion.service";
+import {
+    cancelarSolicitud,
+    getSolicitudDetalle,
+} from "@/src/services/solicitud.service";
 import { useServicioStore } from "@/src/store/servicio.store";
 import { FontAwesome6, Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
@@ -23,7 +27,10 @@ import {
 } from "react-native";
 
 export default function CotizacionesScreen() {
-  const { idSolicitud } = useLocalSearchParams<{ idSolicitud: string }>();
+  const { idSolicitud, modo: modoParam } = useLocalSearchParams<{
+    idSolicitud: string;
+    modo?: string;
+  }>();
   const router = useRouter();
   const { success, error: showError } = useToast();
 
@@ -34,6 +41,14 @@ export default function CotizacionesScreen() {
   const [accepting, setAccepting] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedCotizacion, setSelectedCotizacion] = useState<CotizacionItem | null>(null);
+
+  // ── Tipo de servicio ─────────────────────────────────────────
+  // REST devuelve "INMEDIATO"/"PROGRAMADO", WS y params usan "INMEDIATA"/"PROGRAMADA"
+  const [tipoServicio, setTipoServicio] = useState<string | null>(
+    modoParam ?? null,
+  );
+  const [fechaProgramada, setFechaProgramada] = useState<string | null>(null);
+  const [showProgramadaModal, setShowProgramadaModal] = useState(false);
 
   const solicitudId = (() => {
     if (Array.isArray(idSolicitud)) {
@@ -71,6 +86,19 @@ export default function CotizacionesScreen() {
     fetchCotizaciones();
   }, [fetchCotizaciones]);
 
+  // ── Obtener tipo_servicio si no viene como param ────────────
+  useEffect(() => {
+    if (tipoServicio || !solicitudId) return;
+    getSolicitudDetalle(solicitudId)
+      .then((detalle) => {
+        setTipoServicio(detalle.tipo_servicio);
+        if (detalle.fecha_programada) setFechaProgramada(detalle.fecha_programada);
+      })
+      .catch(() => {
+        setTipoServicio("INMEDIATA"); // fallback
+      });
+  }, [solicitudId, tipoServicio]);
+
   // ── Socket: cotizaciones en tiempo real ───────────────────────
   useSocketCotizaciones({
     idSolicitud: solicitudId ?? undefined,
@@ -94,14 +122,25 @@ export default function CotizacionesScreen() {
   const handleConfirmAceptar = async () => {
     if (!selectedCotizacion) return;
     const idCotizacion = selectedCotizacion.id_cotizacion;
+    const cotizacionValor = selectedCotizacion.valor_cotizacion;
+    const cotizacionTecnico = selectedCotizacion.id_tecnico;
     setSelectedCotizacion(null);
     setAccepting(idCotizacion);
 
     try {
       await aceptarCotizacion(idCotizacion);
+
+      // ── PROGRAMADA: modal de confirmación → home ────────────
+      const esInmediata = tipoServicio === "INMEDIATA" || tipoServicio === "INMEDIATO";
+      if (!esInmediata) {
+        success("¡Cotización aceptada! Servicio programado.");
+        setShowProgramadaModal(true);
+        return;
+      }
+
+      // ── INMEDIATA: tracking en tiempo real ──────────────────
       success("¡Cotización aceptada! El técnico va en camino.");
 
-      // Obtener ubicación del cliente para el mapa de tracking
       let clienteLat = 0;
       let clienteLon = 0;
       try {
@@ -117,9 +156,10 @@ export default function CotizacionesScreen() {
       setServicioActivo({
         id_servicio: 0,
         id_solicitud: solicitudId ?? 0,
-        id_tecnico: selectedCotizacion.id_tecnico,
+        id_tecnico: cotizacionTecnico,
         id_estado: 4,
-        valor_total: selectedCotizacion.valor_cotizacion,
+        valor_total: cotizacionValor,
+        valor_cotizacion: cotizacionValor,
         cliente_lat: clienteLat,
         cliente_lon: clienteLon,
       });
@@ -140,6 +180,31 @@ export default function CotizacionesScreen() {
     }
   };
 
+  // ── Aceptar modal programada → home ───────────────────────────
+  const handleProgramadaAccept = () => {
+    setShowProgramadaModal(false);
+    router.replace("/(tabs)/home");
+  };
+
+  // ── Volver al home (back button) ────────────────────────────────
+  const handleGoHome = () => {
+    if (cotizaciones.length > 0) {
+      Alert.alert(
+        "Salir de cotizaciones",
+        "¿Quieres volver al inicio? Las cotizaciones seguirán disponibles desde tus notificaciones.",
+        [
+          { text: "Quedarme", style: "cancel" },
+          {
+            text: "Ir al inicio",
+            onPress: () => router.replace("/(tabs)/home"),
+          },
+        ],
+      );
+    } else {
+      router.replace("/(tabs)/home");
+    }
+  };
+
   // ── Cancelar solicitud ──────────────────────────────────────────
   const handleCancel = () => {
     Alert.alert(
@@ -150,10 +215,20 @@ export default function CotizacionesScreen() {
         {
           text: "Sí, cancelar",
           style: "destructive",
-          onPress: () => router.replace("/(tabs)/home"),
+          onPress: async () => {
+            if (solicitudId) {
+              try { await cancelarSolicitud(solicitudId); } catch {}
+            }
+            router.replace("/(tabs)/home");
+          },
         },
       ],
     );
+  };
+
+  // ── Reintentar solicitud (nueva) ──────────────────────────────
+  const handleRetry = () => {
+    router.replace("/(tabs)/home");
   };
 
   // ── Estrellas helper ────────────────────────────────────────────
@@ -289,11 +364,30 @@ export default function CotizacionesScreen() {
   } else if (cotizaciones.length === 0) {
     content = (
       <View style={styles.center}>
-        <FontAwesome6 name="clock" size={48} color="#9ca3af" />
+        <Ionicons name="sad-outline" size={56} color="#9ca3af" />
+        <Text style={styles.emptyTitle}>No llegaron cotizaciones</Text>
         <Text style={styles.emptyText}>
-          Aún no hay cotizaciones.{"\n"}Los técnicos están revisando tu
-          solicitud.
+          Ningún técnico envió cotización en este momento.{"\n"}Puedes intentar de nuevo o mejorar los detalles de tu solicitud.
         </Text>
+
+        <View style={styles.emptyActions}>
+          <TouchableOpacity
+            style={styles.retryBtn}
+            activeOpacity={0.8}
+            onPress={handleRetry}
+          >
+            <Ionicons name="refresh" size={18} color="#fff" />
+            <Text style={styles.retryText}>Intentar de nuevo</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.emptyCancel}
+            activeOpacity={0.8}
+            onPress={handleCancel}
+          >
+            <Text style={styles.emptyCancelText}>Cancelar solicitud</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -302,7 +396,7 @@ export default function CotizacionesScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={handleGoHome} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Cotizaciones recibidas</Text>
@@ -389,6 +483,54 @@ export default function CotizacionesScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* ── Modal servicio programado confirmado ──────────────────── */}
+      <Modal
+        visible={showProgramadaModal}
+        transparent
+        animationType="fade"
+        onRequestClose={handleProgramadaAccept}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.programadaIconWrap}>
+              <Ionicons name="calendar-outline" size={48} color="#10b981" />
+            </View>
+
+            <Text style={styles.modalTitle}>Servicio programado</Text>
+
+            <Text style={styles.programadaDesc}>
+              Tu cotización ha sido aceptada. El técnico ha sido asignado y el servicio aparecerá en tu agenda.
+            </Text>
+
+            {fechaProgramada && (
+              <View style={styles.programadaDateRow}>
+                <Ionicons name="time-outline" size={18} color="#407ee3" />
+                <Text style={styles.programadaDateText}>
+                  Fecha: {new Date(fechaProgramada).toLocaleDateString("es-CO", {
+                    weekday: "long",
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  })}
+                </Text>
+              </View>
+            )}
+
+            <Text style={styles.programadaHint}>
+              Recibirás una notificación cuando se acerque la fecha del servicio.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.modalConfirmBtn}
+              activeOpacity={0.8}
+              onPress={handleProgramadaAccept}
+            >
+              <Text style={styles.modalConfirmText}>Aceptar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -424,11 +566,51 @@ const styles = StyleSheet.create({
   },
 
   loadingText: { fontSize: 14, color: "#6b7280", marginTop: 8 },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#374151",
+    textAlign: "center",
+    marginBottom: 8,
+  },
   emptyText: {
     fontSize: 14,
     color: "#6b7280",
     textAlign: "center",
     lineHeight: 22,
+    paddingHorizontal: 32,
+  },
+  emptyActions: {
+    width: "100%",
+    paddingHorizontal: 32,
+    marginTop: 24,
+    gap: 12,
+  },
+  retryBtn: {
+    backgroundColor: "#407ee3",
+    borderRadius: 10,
+    paddingVertical: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  retryText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  emptyCancel: {
+    borderWidth: 1.5,
+    borderColor: "#cc2d2d",
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  emptyCancelText: {
+    color: "#cc2d2d",
+    fontSize: 14,
+    fontWeight: "600",
   },
 
   list: { padding: 20, gap: 16, paddingBottom: 20 },
@@ -596,4 +778,38 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   modalCancelText: { color: "#6b7280", fontSize: 14, fontWeight: "600" },
+
+  // ── Programada modal ──────────────────────────────────────────
+  programadaIconWrap: {
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  programadaDesc: {
+    fontSize: 14,
+    color: "#6b7280",
+    textAlign: "center",
+    lineHeight: 22,
+    marginBottom: 16,
+  },
+  programadaDateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#f0f7ff",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+  },
+  programadaDateText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#407ee3",
+    flex: 1,
+  },
+  programadaHint: {
+    fontSize: 12,
+    color: "#9ca3af",
+    textAlign: "center",
+    marginBottom: 20,
+  },
 });

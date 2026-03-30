@@ -15,6 +15,11 @@ export async function iniciarServicio(
   return data.data ?? data;
 }
 
-export async function finalizarServicio(idServicio: number): Promise<void> {
-  await api.put(`/servicios/${idServicio}/finalizar`);
+export async function finalizarServicio(
+  idServicio: number,
+  valorPagado?: number,
+): Promise<void> {
+  await api.put(`/servicios/${idServicio}/finalizar`, {
+    ...(valorPagado != null ? { valor_total: valorPagado } : {}),
+  });
 }

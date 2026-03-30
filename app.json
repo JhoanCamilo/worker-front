@@ -65,6 +65,13 @@
             "usesCleartextTraffic": true
           }
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#407ee3"
+        }
       ]
     ],
     "experiments": {
@@ -74,9 +81,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "2a0af14e-160b-42ec-88ae-8455a1f33d4f"
+        "projectId": "74320c88-5661-4293-809c-f31cf633b7b2"
       }
     },
-    "owner": "ortega2193"
+    "owner": "oviedo2111"
   }
 }

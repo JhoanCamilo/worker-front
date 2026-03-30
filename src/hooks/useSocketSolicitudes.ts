@@ -1,8 +1,7 @@
+import { logRealtimeEvento } from "@/src/services/realtime-log.service";
 import { createSocket } from "@/src/services/socket";
 import { useAuthStore } from "@/src/store/auth.store";
-import {
-  NuevaSolicitudPayload,
-} from "@/src/types/socket.types";
+import { NuevaSolicitudPayload } from "@/src/types/socket.types";
 import { useEffect, useRef } from "react";
 import { Socket } from "socket.io-client";
 
@@ -40,7 +39,10 @@ export function useSocketSolicitudes({
     const socket = createSocket("/solicitudes", token);
     socketRef.current = socket;
 
-    console.log("[socket/solicitudes] Conectando... token:", token ? "✅ presente" : "❌ ausente");
+    console.log(
+      "[socket/solicitudes] Conectando... token:",
+      token ? "✅ presente" : "❌ ausente",
+    );
 
     socket.on("connect", () => {
       console.log("[socket/solicitudes] ✅ Conectado. id:", socket.id);
@@ -59,16 +61,34 @@ export function useSocketSolicitudes({
 
     socket.on("server:nueva_solicitud", (data: NuevaSolicitudPayload) => {
       console.log("[socket/solicitudes] 📨 nueva_solicitud:", data);
+      void logRealtimeEvento({
+        canal: "WS",
+        evento: "server:nueva_solicitud",
+        idSolicitud: data.id_solicitud,
+      });
       onNuevaSolicitud?.(data);
     });
 
-    socket.on("server:solicitud_cancelada", (data: { id_solicitud: number }) => {
-      console.log("[socket/solicitudes] 🚫 solicitud_cancelada:", data);
-      onSolicitudCancelada?.(data);
-    });
+    socket.on(
+      "server:solicitud_cancelada",
+      (data: { id_solicitud: number }) => {
+        console.log("[socket/solicitudes] 🚫 solicitud_cancelada:", data);
+        void logRealtimeEvento({
+          canal: "WS",
+          evento: "server:solicitud_cancelada",
+          idSolicitud: data.id_solicitud,
+        });
+        onSolicitudCancelada?.(data);
+      },
+    );
 
     socket.on("server:solicitud_asignada", (data: { id_solicitud: number }) => {
       console.log("[socket/solicitudes] ✅ solicitud_asignada:", data);
+      void logRealtimeEvento({
+        canal: "WS",
+        evento: "server:solicitud_asignada",
+        idSolicitud: data.id_solicitud,
+      });
       onSolicitudAsignada?.(data);
     });
 
@@ -84,7 +104,7 @@ export function useSocketSolicitudes({
       }
       socket.disconnect();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, enabled, idSolicitud]);
 
   const joinSolicitud = (id: number) => {

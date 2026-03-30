@@ -3,7 +3,6 @@ import { useSocketSolicitudes } from "@/src/hooks/useSocketSolicitudes";
 import {
     cancelarSolicitud,
     createSolicitudInmediata,
-    createSolicitudProgramada,
 } from "@/src/services/solicitud.service";
 import { MaterialIcons } from "@expo/vector-icons";
 import * as Location from "expo-location";
@@ -31,10 +30,7 @@ export default function SearchingScreen() {
     lat: string;
     lon: string;
     modo: string;
-    fechaProgramada: string;
   }>();
-
-  const esProgramada = params.modo === "PROGRAMADA";
 
   const [idSolicitud, setIdSolicitud] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -131,22 +127,23 @@ export default function SearchingScreen() {
           longitud: lon,
         });
 
-        let res;
-        if (esProgramada && params.fechaProgramada) {
-          const payload = { ...base, fecha_programada: params.fechaProgramada };
-          console.log("[solicitud] POST /solicitudes/programada →", payload);
-          res = await createSolicitudProgramada(payload);
-        } else {
-          console.log("[solicitud] POST /solicitudes/inmediata →", base);
-          res = await createSolicitudInmediata(base);
-        }
+        console.log("[solicitud] POST /solicitudes/inmediata →", base);
+        const res = await createSolicitudInmediata(base);
 
         if (cancelled) return;
 
-        setIdSolicitud(res.id_solicitud);
         console.log(
           `[solicitud] ✅ Creada. id: ${res.id_solicitud} | técnicos notificados: ${res.tecnicos_notificados}`,
         );
+
+        if (res.tecnicos_notificados === 0) {
+          setError(
+            "No encontramos técnicos disponibles cerca de tu ubicación. Intenta más tarde o agenda un servicio programado.",
+          );
+          return;
+        }
+
+        setIdSolicitud(res.id_solicitud);
       } catch (err: any) {
         if (cancelled) return;
         const msg = getSolicitudErrorMessage(err);
@@ -162,15 +159,22 @@ export default function SearchingScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Timer cuenta regresiva 5 minutos ────────────────────────
+  // ── Timer cuenta regresiva 2 minutos ────────────────────────
   useEffect(() => {
     if (!idSolicitud || error) return;
 
     timerRef.current = setInterval(() => {
       setSecondsLeft((prev) => {
         if (prev <= 1) {
-          // Fallback: si el backend no emitió cotizaciones_listas, navegar igual
-          goToCotizaciones(idSolicitud);
+          if (timerRef.current) clearInterval(timerRef.current);
+          // Si no llegó ninguna cotización, mostrar mensaje descriptivo
+          if (cotizacionCount === 0) {
+            setError(
+              "No encontramos técnicos disponibles cerca de tu ubicación. Intenta más tarde o agenda un servicio programado.",
+            );
+          } else {
+            goToCotizaciones(idSolicitud);
+          }
           return 0;
         }
         return prev - 1;
@@ -181,7 +185,7 @@ export default function SearchingScreen() {
       if (timerRef.current) clearInterval(timerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idSolicitud, error]);
+  }, [idSolicitud, error, cotizacionCount]);
 
   const goToCotizaciones = (solId: number) => {
     if (navigatedRef.current) return;
@@ -189,7 +193,7 @@ export default function SearchingScreen() {
     if (timerRef.current) clearInterval(timerRef.current);
     router.replace({
       pathname: "/(flows)/cotizaciones",
-      params: { idSolicitud: String(solId) },
+      params: { idSolicitud: String(solId), modo: "INMEDIATA" },
     });
   };
 
@@ -242,8 +246,6 @@ export default function SearchingScreen() {
   let searchingTitle = "Buscando técnicos\ndisponibles";
   if (cotizacionCount > 0) {
     searchingTitle = "Recibiendo\ncotizaciones";
-  } else if (esProgramada) {
-    searchingTitle = "Buscando técnicos\npara tu servicio";
   }
 
   return (
@@ -295,9 +297,7 @@ export default function SearchingScreen() {
           )}
 
           <Text style={styles.infoText}>
-            {esProgramada
-              ? "Recibirás cotizaciones de técnicos disponibles\npara la fecha que seleccionaste"
-              : "Recibirás hasta 5 cotizaciones o se te mostrarán\nlas disponibles en 2 minutos"}
+            Recibirás hasta 5 cotizaciones o se te mostrarán{"\n"}las disponibles en 2 minutos
           </Text>
         </>
       )}
@@ -308,7 +308,9 @@ export default function SearchingScreen() {
           activeOpacity={0.8}
           onPress={handleCancel}
         >
-          <Text style={styles.cancelText}>Cancelar solicitud</Text>
+          <Text style={styles.cancelText}>
+            {error ? "Volver al inicio" : "Cancelar solicitud"}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>

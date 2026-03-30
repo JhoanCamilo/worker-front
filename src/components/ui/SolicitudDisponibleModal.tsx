@@ -45,11 +45,8 @@ export function SolicitudDisponibleModal({
             {esProgramada ? "Servicio programado disponible" : "Solicitud de servicio disponible"}
           </Text>
 
-          {/* Categoría, dirección y distancia */}
+          {/* Categoría y distancia (dirección oculta hasta aceptar cotización) */}
           <Text style={styles.category}>{solicitud.subcategoria}</Text>
-          {solicitud.direccion_servicio && (
-            <Text style={styles.address} numberOfLines={2}>{solicitud.direccion_servicio}</Text>
-          )}
           <Text style={styles.distance}>A {distKm} km de tu ubicación</Text>
 
           {/* Banner programado */}
@@ -107,11 +104,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
     color: "#374151",
-    textAlign: "center",
-  },
-  address: {
-    fontSize: 13,
-    color: "#6b7280",
     textAlign: "center",
   },
   distance: {

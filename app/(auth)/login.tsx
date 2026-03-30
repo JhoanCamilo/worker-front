@@ -6,14 +6,13 @@ import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Text,
-  View,
+    Image,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    Text,
+    View,
 } from "react-native";
-import Logo from "../../assets/images/favicon.png";
 
 const version = Constants.expoConfig?.version;
 
@@ -56,7 +55,7 @@ export default function LoginScreen() {
         {/* Logo */}
         <View style={{ alignItems: "center", marginBottom: 32 }}>
           <Image
-            source={Logo}
+            source={require("../../assets/images/favicon.png")}
             style={{ width: 500, height: 160, resizeMode: "contain" }}
           />
         </View>

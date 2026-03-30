@@ -47,21 +47,28 @@ interface ApiCotizacionItem {
 
 const toCotizacionItem = (item: ApiCotizacionItem): CotizacionItem => {
   const raw = item.Tecnico ?? item.tecnico;
+  // Backend: tecnico.datos_usuario.nombre, tecnico.url_foto, tecnico.prom_calificacion
+  const datos = raw?.datos_usuario;
   const tecnico: TecnicoCotizacion | null = raw
     ? {
-        nombre: raw.nombre ?? raw.Usuario?.nombre ?? "",
-        apellido: raw.apellido ?? raw.Usuario?.apellido ?? "",
-        foto_perfil: raw.foto_perfil ?? raw.Usuario?.foto_perfil ?? null,
-        promedio_calificacion: raw.promedio_calificacion ?? null,
+        nombre: datos?.nombre ?? raw.nombre ?? raw.Usuario?.nombre ?? "",
+        apellido: datos?.apellido ?? raw.apellido ?? raw.Usuario?.apellido ?? "",
+        foto_perfil: raw.url_foto ?? raw.foto_perfil ?? raw.Usuario?.foto_perfil ?? null,
+        promedio_calificacion: raw.prom_calificacion ?? raw.promedio_calificacion ?? null,
         total_servicios: raw.total_servicios ?? 0,
       }
     : null;
+
+  // valor_cotizacion comes as string "85000.00" from backend — parse to number
+  const valor = typeof item.valor_cotizacion === "string"
+    ? parseFloat(item.valor_cotizacion)
+    : item.valor_cotizacion;
 
   return {
     id_cotizacion: item.id_cotizacion,
     id_solicitud: item.id_solicitud,
     id_tecnico: item.id_tecnico,
-    valor_cotizacion: item.valor_cotizacion,
+    valor_cotizacion: valor,
     descripcion_trabajo: item.descripcion_trabajo ?? item.descripcion ?? "",
     tiempo_estimado: item.tiempo_estimado,
     estado: item.estado,

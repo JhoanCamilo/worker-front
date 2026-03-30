@@ -1,3 +1,4 @@
+import { logRealtimeEvento } from "@/src/services/realtime-log.service";
 import { createSocket } from "@/src/services/socket";
 import { useAuthStore } from "@/src/store/auth.store";
 import {
@@ -16,7 +17,7 @@ interface Options {
   /** (CLIENTE) Ventana de cotizaciones cerrada (5 min o 5 cotizaciones) */
   onCotizacionesListas?: (data: BatchListasPayload) => void;
   /** (TECNICO) Tu cotización fue aceptada */
-  onCotizacionAceptada?: (data: CotizacionPayload) => void;
+  onCotizacionAceptada?: (data: unknown) => void;
   /** (TECNICO) Tu cotización fue rechazada */
   onCotizacionRechazada?: (data: RechazoPayload) => void;
 }
@@ -76,21 +77,43 @@ export function useSocketCotizaciones({
 
     socket.on("server:nueva_cotizacion", (data: CotizacionPayload) => {
       console.log("[socket/cotizaciones] 💰 nueva_cotizacion:", data);
+      void logRealtimeEvento({
+        canal: "WS",
+        evento: "server:nueva_cotizacion",
+        idSolicitud: data.id_solicitud,
+        idTecnico: data.id_tecnico,
+      });
       cbRefs.current.onNuevaCotizacion?.(data);
     });
 
     socket.on("server:cotizaciones_listas", (data: BatchListasPayload) => {
       console.log("[socket/cotizaciones] ✅ cotizaciones_listas:", data);
+      void logRealtimeEvento({
+        canal: "WS",
+        evento: "server:cotizaciones_listas",
+        idSolicitud: data.id_solicitud,
+      });
       cbRefs.current.onCotizacionesListas?.(data);
     });
 
-    socket.on("server:cotizacion_aceptada", (data: CotizacionPayload) => {
+    socket.on("server:cotizacion_aceptada", (data: any) => {
       console.log("[socket/cotizaciones] ✅ cotizacion_aceptada:", data);
+      void logRealtimeEvento({
+        canal: "WS",
+        evento: "server:cotizacion_aceptada",
+        idSolicitud: data?.id_solicitud ?? data?.datos?.id_solicitud,
+        idTecnico: data?.id_tecnico ?? data?.datos?.id_tecnico,
+      });
       cbRefs.current.onCotizacionAceptada?.(data);
     });
 
     socket.on("server:cotizacion_rechazada", (data: RechazoPayload) => {
       console.log("[socket/cotizaciones] ❌ cotizacion_rechazada:", data);
+      void logRealtimeEvento({
+        canal: "WS",
+        evento: "server:cotizacion_rechazada",
+        idSolicitud: data.id_solicitud,
+      });
       cbRefs.current.onCotizacionRechazada?.(data);
     });
 

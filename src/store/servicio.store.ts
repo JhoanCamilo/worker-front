@@ -6,6 +6,7 @@ export interface ServicioActivo {
   id_tecnico: number;
   id_estado: number;
   valor_total?: number;
+  valor_cotizacion?: number; // Valor acordado en la cotización
   cliente_lat: number;
   cliente_lon: number;
   tecnico_lat?: number;

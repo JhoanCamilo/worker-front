@@ -1,7 +1,10 @@
+import { useSocketServicios } from "@/src/hooks/useSocketServicios";
+import { useToast } from "@/src/hooks/useToast";
+import { useNotificacionStore } from "@/src/store/notificacion.store";
 import { useAuthStore } from "@/src/store/auth.store";
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs, useRouter } from "expo-router";
-import { Text, TouchableOpacity } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
 
 const TAB_BG = "#407ee3";
 const ACTIVE = "#f2c70f";
@@ -19,8 +22,58 @@ function HeaderTitle() {
   );
 }
 
+function NotificationBell() {
+  const router = useRouter();
+  const noLeidas = useNotificacionStore((s) => s.noLeidas);
+
+  return (
+    <TouchableOpacity
+      onPress={() => router.push("/(flows)/notificaciones" as never)}
+      style={{ marginRight: 14 }}
+    >
+      <Ionicons name="notifications" size={24} color="#fff" />
+      {noLeidas > 0 && (
+        <View
+          style={{
+            position: "absolute",
+            top: -4,
+            right: -6,
+            backgroundColor: "#cc2d2d",
+            borderRadius: 9,
+            minWidth: 18,
+            height: 18,
+            alignItems: "center",
+            justifyContent: "center",
+            paddingHorizontal: 4,
+          }}
+        >
+          <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}>
+            {noLeidas > 99 ? "99+" : noLeidas}
+          </Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
+
 export default function TabsLayout() {
   const router = useRouter();
+  const { success: showSuccess } = useToast();
+
+  // ── Socket: recibir eventos del servicio (finalización, etc.) ──
+  useSocketServicios({
+    onServicioFinalizado: (data) => {
+      console.log("[client/layout] Servicio finalizado →", data);
+      showSuccess("¡El servicio ha finalizado! Califica al técnico.");
+      router.push({
+        pathname: "/(flows)/calificar",
+        params: {
+          idServicio: String(data.id_servicio),
+          valorTotal: String(data.valor_total ?? 0),
+        },
+      });
+    },
+  });
 
   return (
     <Tabs
@@ -32,6 +85,7 @@ export default function TabsLayout() {
           shadowOpacity: 0,
         },
         headerTitle: () => <HeaderTitle />,
+        headerRight: () => <NotificationBell />,
         headerLeft:
           route.name !== "home"
             ? () => (

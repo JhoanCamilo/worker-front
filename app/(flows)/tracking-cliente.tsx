@@ -1,16 +1,16 @@
-import { useSocketTracking } from "@/src/hooks/useSocketTracking";
 import { useSocketServicios } from "@/src/hooks/useSocketServicios";
-import { useServicioStore } from "@/src/store/servicio.store";
+import { useSocketTracking } from "@/src/hooks/useSocketTracking";
 import { useToast } from "@/src/hooks/useToast";
+import { useServicioStore } from "@/src/store/servicio.store";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 
@@ -29,7 +29,9 @@ export default function TrackingClienteScreen() {
   const [distanciaMetros, setDistanciaMetros] = useState<number | null>(null);
 
   const servicioActivo = useServicioStore((s) => s.servicioActivo);
-  const updateTecnicoLocation = useServicioStore((s) => s.updateTecnicoLocation);
+  const updateTecnicoLocation = useServicioStore(
+    (s) => s.updateTecnicoLocation,
+  );
   const clearServicioActivo = useServicioStore((s) => s.clearServicioActivo);
 
   // ── Socket: recibir GPS del técnico ───────────────────────────
@@ -42,10 +44,16 @@ export default function TrackingClienteScreen() {
       if (mapRef.current && servicioActivo?.cliente_lat) {
         mapRef.current.fitToCoordinates(
           [
-            { latitude: servicioActivo.cliente_lat, longitude: servicioActivo.cliente_lon },
+            {
+              latitude: servicioActivo.cliente_lat,
+              longitude: servicioActivo.cliente_lon,
+            },
             { latitude: data.latitud, longitude: data.longitud },
           ],
-          { edgePadding: { top: 120, right: 60, bottom: 300, left: 60 }, animated: true },
+          {
+            edgePadding: { top: 120, right: 60, bottom: 300, left: 60 },
+            animated: true,
+          },
         );
       }
     },
@@ -63,15 +71,24 @@ export default function TrackingClienteScreen() {
   useSocketServicios({
     onServicioIniciado: () => {
       setEstado("EN_SERVICIO");
-      showSuccess("El técnico ha iniciado el servicio");
+      // Mostrar brevemente que inició, luego enviar al home
+      // El cliente recibirá push notification cuando el servicio finalice
+      setTimeout(() => {
+        clearServicioActivo();
+        router.replace("/(tabs)/home");
+      }, 3000);
     },
     onServicioFinalizado: (data) => {
+      // Fallback: si el cliente aún está en esta pantalla
       setEstado("FINALIZADO");
       setTimeout(() => {
         clearServicioActivo();
         router.replace({
           pathname: "/(flows)/calificar",
-          params: { idServicio: String(data.id_servicio) },
+          params: {
+            idServicio: String(data.id_servicio),
+            valorTotal: String(data.valor_total ?? 0),
+          },
         });
       }, 1500);
     },
@@ -130,24 +147,30 @@ export default function TrackingClienteScreen() {
         </Marker>
 
         {/* Marcador del técnico */}
-        {servicioActivo.tecnico_lat != null && servicioActivo.tecnico_lon != null && (
-          <Marker
-            coordinate={{
-              latitude: servicioActivo.tecnico_lat,
-              longitude: servicioActivo.tecnico_lon,
-            }}
-            title="Técnico"
-          >
-            <View style={styles.markerTech}>
-              <MaterialIcons name="engineering" size={20} color="#fff" />
-            </View>
-          </Marker>
-        )}
+        {servicioActivo.tecnico_lat != null &&
+          servicioActivo.tecnico_lon != null && (
+            <Marker
+              coordinate={{
+                latitude: servicioActivo.tecnico_lat,
+                longitude: servicioActivo.tecnico_lon,
+              }}
+              title="Técnico"
+            >
+              <View style={styles.markerTech}>
+                <MaterialIcons name="engineering" size={20} color="#fff" />
+              </View>
+            </Marker>
+          )}
       </MapView>
 
       {/* Status card */}
       <View style={styles.statusCard}>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(estado) }]}>
+        <View
+          style={[
+            styles.statusBadge,
+            { backgroundColor: getStatusColor(estado) },
+          ]}
+        >
           <Text style={styles.statusText}>{getStatusLabel(estado)}</Text>
         </View>
 
@@ -162,7 +185,14 @@ export default function TrackingClienteScreen() {
         )}
 
         {estado === "EN_SERVICIO" && (
-          <Text style={styles.infoText}>Servicio en progreso...</Text>
+          <>
+            <Text style={styles.infoText}>
+              El técnico ha iniciado el trabajo
+            </Text>
+            <Text style={styles.subInfoText}>
+              Te notificaremos cuando el servicio finalice
+            </Text>
+          </>
         )}
 
         {estado === "FINALIZADO" && (
@@ -175,21 +205,31 @@ export default function TrackingClienteScreen() {
 
 function getStatusColor(estado: Estado): string {
   switch (estado) {
-    case "EN_CAMINO": return "#407ee3";
-    case "CERCA": return "#f2c70f";
-    case "LLEGO": return "#10b981";
-    case "EN_SERVICIO": return "#8b5cf6";
-    case "FINALIZADO": return "#6b7280";
+    case "EN_CAMINO":
+      return "#407ee3";
+    case "CERCA":
+      return "#f2c70f";
+    case "LLEGO":
+      return "#10b981";
+    case "EN_SERVICIO":
+      return "#8b5cf6";
+    case "FINALIZADO":
+      return "#6b7280";
   }
 }
 
 function getStatusLabel(estado: Estado): string {
   switch (estado) {
-    case "EN_CAMINO": return "Técnico en camino";
-    case "CERCA": return "Técnico cerca";
-    case "LLEGO": return "¡Tu técnico ha llegado!";
-    case "EN_SERVICIO": return "Servicio en progreso";
-    case "FINALIZADO": return "Servicio finalizado";
+    case "EN_CAMINO":
+      return "Técnico en camino";
+    case "CERCA":
+      return "Técnico cerca";
+    case "LLEGO":
+      return "¡Tu técnico ha llegado!";
+    case "EN_SERVICIO":
+      return "Servicio en progreso";
+    case "FINALIZADO":
+      return "Servicio finalizado";
   }
 }
 
@@ -253,5 +293,6 @@ const styles = StyleSheet.create({
   },
   statusText: { color: "#fff", fontSize: 16, fontWeight: "700" },
   distanceText: { fontSize: 14, color: "#374151" },
-  infoText: { fontSize: 14, color: "#6b7280" },
+  infoText: { fontSize: 14, color: "#6b7280", textAlign: "center" },
+  subInfoText: { fontSize: 12, color: "#9ca3af", textAlign: "center" },
 });

@@ -13,7 +13,7 @@ export function LabeledInput({ label, error, ...props }: Props) {
       </Text>
 
       <TextInput
-        placeholderTextColor="#6b7280"
+        placeholderTextColor="#4b5563"
         {...props}
         style={{
           borderWidth: 1,

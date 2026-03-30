@@ -44,7 +44,7 @@ export interface SolicitudDetalle {
   id_solicitud: number;
   descripcion: string;
   prioridad: string;
-  tipo_servicio: "INMEDIATA" | "PROGRAMADA";
+  tipo_servicio: "INMEDIATA" | "PROGRAMADA" | "INMEDIATO" | "PROGRAMADO";
   id_estado: number;
   estado: { descripcion: string };
   subcategoria: {
@@ -67,5 +67,66 @@ export async function getSolicitudDetalle(
   id: number,
 ): Promise<SolicitudDetalle> {
   const { data } = await api.get(`/solicitudes/${id}`);
+  return data.data ?? data;
+}
+
+// ── Mis solicitudes (agenda del cliente) ──────────────────────
+
+export interface SolicitudCliente {
+  id_solicitud: number;
+  tipo_servicio: "PROGRAMADO" | "INMEDIATA";
+  descripcion: string;
+  fecha_solicitud: string;
+  estado: { id_estado: number; descripcion: string };
+  subcategoria: {
+    id_subcategoria: number;
+    nombre: string;
+    Categoria: { id_categoria: number; nombre: string };
+  };
+  cotizaciones: Array<{
+    id_cotizacion: number;
+    valor_cotizacion: string;
+    estado: string;
+    tecnico: {
+      id_tecnico: number;
+      url_foto: string | null;
+      prom_calificacion: number | null;
+      datos_usuario: { nombre: string; apellido: string; telefono?: string };
+    };
+  }>;
+  servicios_generados: Array<{
+    id_servicio: number;
+    id_estado: number;
+    valor_total: string;
+    estado: { id_estado: number; descripcion: string };
+  }>;
+  citas: Array<{
+    id_cita: number;
+    fecha_cita: string;
+    id_estado: number;
+  }>;
+}
+
+export interface MisSolicitudesResponse {
+  total: number;
+  page: number;
+  limit: number;
+  total_paginas: number;
+  solicitudes: SolicitudCliente[];
+}
+
+export async function getMisSolicitudes(
+  page = 1,
+  limit = 10,
+  tipo_servicio?: string,
+): Promise<MisSolicitudesResponse> {
+  const { data } = await api.get("/solicitudes/mis-solicitudes", {
+    params: { page, limit, tipo_servicio },
+  });
+  return data.data;
+}
+
+export async function getSolicitudesTecnicoPendientes(): Promise<unknown> {
+  const { data } = await api.get("/solicitudes/tecnico/pendientes");
   return data.data ?? data;
 }

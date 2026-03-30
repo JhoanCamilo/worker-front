@@ -28,9 +28,21 @@ export async function updateDisponibilidad(
   disponible: boolean,
   coords?: { latitud: number; longitud: number },
 ): Promise<void> {
-  await api.put("/tecnicos/perfil", {
+  const payload: {
+    disponible_inmediato: boolean;
+    latitud?: number;
+    longitud?: number;
+  } = {
     disponible_inmediato: disponible,
-    ...(coords ?? {}),
+  };
+
+  if (coords) {
+    payload.latitud = coords.latitud;
+    payload.longitud = coords.longitud;
+  }
+
+  await api.put("/tecnicos/perfil", {
+    ...payload,
   });
 }
 
@@ -57,7 +69,9 @@ export interface TechnicianEspecialidad {
   fecha_agregada: string;
 }
 
-export async function getTechnicianEspecialidades(): Promise<TechnicianEspecialidad[]> {
+export async function getTechnicianEspecialidades(): Promise<
+  TechnicianEspecialidad[]
+> {
   const { data } = await api.get("/tecnicos/especialidades");
   return data.data;
 }
@@ -84,4 +98,61 @@ export interface TechnicianCitiesData {
 export async function getTechnicianCities(): Promise<TechnicianCitiesData> {
   const { data } = await api.get("/tecnicos/ciudades");
   return data.data;
+}
+
+export interface TechnicianDisponibilidadActual {
+  disponible_inmediato: boolean;
+  estado_validacion: string;
+  radio_cobertura_km: number | null;
+  tipo_cobertura: string | null;
+}
+
+export interface TechnicianServicioActivoActual {
+  id_servicio: number;
+  id_solicitud: number;
+  id_estado: number;
+  fecha_servicio: string;
+  tipo_servicio: string;
+  direccion_servicio: string | null;
+}
+
+export interface TechnicianCitaProximaAsignada {
+  id_cita: number;
+  fecha_cita: string;
+  id_estado: number;
+  estado: string;
+  id_solicitud: number;
+  descripcion: string;
+  direccion_servicio: string | null;
+}
+
+export interface TechnicianSolicitudInmediataPendiente {
+  id_cola: number;
+  priority_score: number;
+  estado_respuesta: string;
+  fecha_notificacion: string;
+  solicitud: {
+    id_solicitud: number;
+    tipo_servicio: string;
+    descripcion: string;
+    prioridad: string;
+    direccion_servicio: string | null;
+    fecha_solicitud: string;
+    estado: {
+      id_estado: number;
+      descripcion: string;
+    };
+  };
+}
+
+export interface TechnicianEstadoActual {
+  disponibilidad: TechnicianDisponibilidadActual;
+  servicio_activo: TechnicianServicioActivoActual | null;
+  citas_proximas_asignadas: TechnicianCitaProximaAsignada[];
+  solicitud_inmediata_pendiente: TechnicianSolicitudInmediataPendiente | null;
+}
+
+export async function getTechnicianEstadoActual(): Promise<TechnicianEstadoActual> {
+  const { data } = await api.get("/tecnicos/estado-actual");
+  return data.data ?? data;
 }

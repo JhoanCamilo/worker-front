@@ -2,8 +2,16 @@ import { useToast } from "@/src/hooks/useToast";
 import { crearCotizacion } from "@/src/services/cotizacion.service";
 import {
     getSolicitudDetalle,
+    getSolicitudesTecnicoPendientes,
     SolicitudDetalle,
 } from "@/src/services/solicitud.service";
+import {
+    getTechnicianEstadoActual,
+    updateDisponibilidad,
+} from "@/src/services/technician.service";
+import { useAuthStore } from "@/src/store/auth.store";
+import { useServicioStore } from "@/src/store/servicio.store";
+import { useTecnicoEstadoStore } from "@/src/store/tecnico-estado.store";
 import { FontAwesome6, Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
@@ -23,6 +31,9 @@ export default function TecnicoSolicitudScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { success, error: showError } = useToast();
+  const updateUser = useAuthStore((s) => s.updateUser);
+  const setEstadoActual = useTecnicoEstadoStore((s) => s.setEstadoActual);
+  const clearServicioActivo = useServicioStore((s) => s.clearServicioActivo);
 
   const [solicitud, setSolicitud] = useState<SolicitudDetalle | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,12 +68,56 @@ export default function TecnicoSolicitudScreen() {
         descripcion: descripcion || "Servicio técnico",
         tiempo_estimado: tiempoEstimado || "Por definir",
       });
-      success("Cotización enviada correctamente");
+
+      // Pasar a inactivo mientras el cliente decide
+      try {
+        await updateDisponibilidad(false);
+        updateUser({ disponible: false });
+      } catch {
+        // Si falla el PUT, al menos actualizamos estado local
+        updateUser({ disponible: false });
+      }
+
+      success("Cotización enviada. Estarás inactivo mientras el cliente decide.");
       setCotizacionVisible(false);
       router.replace("/(technician)/home");
     } catch (err: any) {
+      const status = err?.response?.status;
       const msg =
         err?.response?.data?.message ?? "No se pudo enviar la cotización";
+
+      if (status === 409) {
+        showError("La solicitud expiró. Actualizando pendientes...");
+
+        try {
+          // Refresh en cadena recomendado por backend para TTL de inmediatas
+          await getSolicitudesTecnicoPendientes();
+          const estado = await getTechnicianEstadoActual();
+
+          updateUser({
+            disponible: estado.disponibilidad.disponible_inmediato,
+          });
+          setEstadoActual({
+            disponibilidad: estado.disponibilidad,
+            citasProximasAsignadas: estado.citas_proximas_asignadas ?? [],
+            solicitudInmediataPendiente: estado.solicitud_inmediata_pendiente,
+          });
+
+          if (!estado.servicio_activo) {
+            clearServicioActivo();
+          }
+        } catch (refreshErr) {
+          console.warn(
+            "[ttl] Error refrescando estado tras expiración:",
+            refreshErr,
+          );
+        }
+
+        setCotizacionVisible(false);
+        router.replace("/(technician)/home");
+        return;
+      }
+
       showError(msg);
     } finally {
       setSending(false);
@@ -87,7 +142,10 @@ export default function TecnicoSolicitudScreen() {
 
   const categoria = solicitud.subcategoria.Categorium.nombre;
   const subcategoria = solicitud.subcategoria.nombre;
-  const esProgramada = solicitud.tipo_servicio === "PROGRAMADA";
+  const esInmediata =
+    solicitud.tipo_servicio === "INMEDIATA" ||
+    solicitud.tipo_servicio === "INMEDIATO";
+  const esProgramada = !esInmediata;
 
   const formatFecha = (iso: string): string => {
     const d = new Date(iso);
@@ -165,9 +223,10 @@ export default function TecnicoSolicitudScreen() {
           value={esProgramada ? "Programado (Agendamiento)" : "Inmediato"}
         />
         <InfoField label="Prioridad" value={solicitud.prioridad} />
-        {solicitud.direccion_servicio && (
-          <InfoField label="Dirección" value={solicitud.direccion_servicio} />
-        )}
+        <InfoField
+          label="Ubicación"
+          value="Se revelará al aceptar la cotización"
+        />
       </ScrollView>
 
       {/* Botones fijos */}
@@ -207,7 +266,7 @@ export default function TecnicoSolicitudScreen() {
                 onChangeText={setValor}
                 keyboardType="decimal-pad"
                 placeholder="Ej: 80000"
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor="#4b5563"
                 style={styles.input}
               />
             </View>
@@ -217,8 +276,8 @@ export default function TecnicoSolicitudScreen() {
               <TextInput
                 value={descripcion}
                 onChangeText={setDescripcion}
-                placeholder="Describe brevemente el trabajo"
-                placeholderTextColor="#9ca3af"
+                placeholder="Ej: Revisaré con llave inglesa, cambiaré el empaque y verificaré que no haya fugas"
+                placeholderTextColor="#4b5563"
                 style={[
                   styles.input,
                   { height: 80, textAlignVertical: "top", paddingTop: 12 },
@@ -233,7 +292,7 @@ export default function TecnicoSolicitudScreen() {
                 value={tiempoEstimado}
                 onChangeText={setTiempoEstimado}
                 placeholder="Ej: 2 horas"
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor="#4b5563"
                 style={styles.input}
               />
             </View>

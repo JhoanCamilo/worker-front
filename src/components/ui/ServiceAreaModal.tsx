@@ -121,7 +121,7 @@ export function ServiceAreaModal({ visible, onClose, onFinish, initialKm }: Prop
                   onChangeText={setKm}
                   keyboardType="decimal-pad"
                   placeholder="Ej: 15.5"
-                  placeholderTextColor="#9ca3af"
+                  placeholderTextColor="#4b5563"
                   style={styles.kmInput}
                 />
                 <Text style={styles.inputHint}>

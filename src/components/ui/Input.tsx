@@ -29,7 +29,7 @@ export function Input({
       }}
     >
       <TextInput
-        placeholderTextColor="#6b7280"
+        placeholderTextColor="#4b5563"
         {...props}
         secureTextEntry={isPassword && !showPassword}
         style={{
