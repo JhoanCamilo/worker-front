@@ -61,6 +61,11 @@ export interface SolicitudDetalle {
     type: string;
     coordinates: [number, number]; // [longitud, latitud] — orden GeoJSON
   };
+  servicios_generados?: Array<{
+    id_servicio: number;
+    id_estado: number;
+    valor_total: string;
+  }>;
 }
 
 export async function getSolicitudDetalle(

@@ -8,11 +8,13 @@ import {
 import { logRealtimeNavegacion } from "@/src/services/realtime-log.service";
 import { useNotificacionStore } from "@/src/store/notificacion.store";
 import { normalizeCotizacionAceptada } from "@/src/utils/cotizacionAceptada";
+import { getSolicitudDetalle } from "@/src/services/solicitud.service";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
     ActivityIndicator,
+    Alert,
     FlatList,
     RefreshControl,
     StyleSheet,
@@ -257,6 +259,32 @@ export default function NotificacionesScreen() {
 
     // Navegar según tipo de notificación
     const datos = item.datos_adicionales ?? {};
+
+    // ── Escudo Anti-Fantasmas ─────────────────────────────
+    const idSolicitudRaw = toScalarId(datos.id_solicitud);
+    if (idSolicitudRaw) {
+      try {
+        const detalle = await getSolicitudDetalle(Number(idSolicitudRaw));
+        const estado = detalle.estado?.descripcion?.toUpperCase();
+
+        if (estado === "CANCELADA") {
+          Alert.alert("Solicitud cancelada", "Esta solicitud ya no se encuentra activa.");
+          return; // Bloqueado
+        }
+
+        if (estado === "COMPLETADA" || estado === "FINALIZADA") {
+          const permitidas = ["CALIFICACION_RECIBIDA", "PAGO_RECIBIDO", "SERVICIO_COMPLETADO"];
+          if (!permitidas.includes(item.tipo)) {
+            Alert.alert("Servicio finalizado", "Este servicio ya ha concluido.");
+            return; // Bloqueado
+          }
+        }
+      } catch (err) {
+        console.warn("[notificaciones] No se pudo verificar la solicitud:", err);
+      }
+    }
+    // ────────────────────────────────────────────────────────
+    
     navigateFromNotification(item, datos, safePush);
   };
 

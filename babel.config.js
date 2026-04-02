@@ -1,4 +1,4 @@
-// Plugin que reemplaza CUALQUIER forma de import.meta con {}
+ // Plugin que reemplaza CUALQUIER forma de import.meta con {}
 // Cubre: import.meta.url, import.meta.env, import.meta.hot, etc.
 function replaceImportMeta() {
   return {

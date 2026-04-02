@@ -1,8 +1,11 @@
 import { CitaAgenda, getAgenda } from "@/src/services/agenda.service";
+import { GarantiaItem, getGarantiasTecnico } from "@/src/services/garantia.service";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   RefreshControl,
   StyleSheet,
@@ -28,16 +31,19 @@ const ESTADO_TO_ID: Record<string, number> = {
 const getHoy = () => new Date().toISOString().split("T")[0]; // "2026-03-27"
 
 export default function TechnicianScheduleScreen() {
+  const router = useRouter();
   const [citas, setCitas] = useState<CitaAgenda[]>([]);
+  const [garantias, setGarantias] = useState<GarantiaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [modo, setModo] = useState<"proximas" | "historial">("proximas");
+  const [modo, setModo] = useState<"proximas" | "historial" | "garantias">("proximas");
   const [filtroEstado, setFiltroEstado] = useState("Todas");
   const [pagina, setPagina] = useState(1);
   const [totalPaginas, setTotalPaginas] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  const estadosFiltro = modo === "proximas" ? ESTADOS_PROXIMAS : ESTADOS_HISTORIAL;
+  const estadosFiltro = modo === "proximas" ? ESTADOS_PROXIMAS : 
+                        modo === "historial" ? ESTADOS_HISTORIAL : [];
 
   const fetchCitas = useCallback(
     async (page = 1, append = false) => {
@@ -60,27 +66,56 @@ export default function TechnicianScheduleScreen() {
     [filtroEstado, modo],
   );
 
+  const fetchGarantias = useCallback(
+    async (page = 1, append = false) => {
+      try {
+        const res = await getGarantiasTecnico(page, 15);
+        const items = res?.garantias ?? [];
+        setGarantias((prev) => (append ? [...prev, ...items] : items));
+        setTotalPaginas(res?.total_paginas ?? 1);
+        setPagina(page);
+      } catch (err) {
+        console.error("[agenda] Error garantias:", err);
+        if (!append) setGarantias([]);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     setLoading(true);
-    fetchCitas(1).finally(() => setLoading(false));
-  }, [fetchCitas]);
+    if (modo === "garantias") {
+      fetchGarantias(1).finally(() => setLoading(false));
+    } else {
+      fetchCitas(1).finally(() => setLoading(false));
+    }
+  }, [fetchCitas, fetchGarantias, modo]);
 
-  const handleModoChange = (nuevoModo: "proximas" | "historial") => {
+  const handleModoChange = (nuevoModo: "proximas" | "historial" | "garantias") => {
     if (nuevoModo === modo) return;
     setModo(nuevoModo);
     setFiltroEstado("Todas");
+    setPagina(1);
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchCitas(1);
+    if (modo === "garantias") {
+      await fetchGarantias(1);
+    } else {
+      await fetchCitas(1);
+    }
     setRefreshing(false);
   };
 
   const onEndReached = async () => {
     if (loadingMore || pagina >= totalPaginas) return;
     setLoadingMore(true);
-    await fetchCitas(pagina + 1, true);
+    if (modo === "garantias") {
+      await fetchGarantias(pagina + 1, true);
+    } else {
+      await fetchCitas(pagina + 1, true);
+    }
     setLoadingMore(false);
   };
 
@@ -123,6 +158,62 @@ export default function TechnicianScheduleScreen() {
     }
   };
 
+  const handleCitaTap = (item: CitaAgenda) => {
+    const estado = item.estado?.descripcion?.toUpperCase() ?? "";
+
+    if (["COMPLETADA", "CANCELADA", "FINALIZADA"].includes(estado)) {
+      router.push({
+        pathname: "/(flows)/detalle-servicio" as never,
+        params: { idSolicitud: String(item.solicitud?.id_solicitud) },
+      });
+      return;
+    }
+
+    if (modo !== "proximas") return;
+    
+    // Si ya está en proceso, ir al mapa directamente
+    if (estado === "EN_PROCESO" || estado === "EN_CAMINO") {
+      router.push({
+          pathname: "/(flows)/servicio-activo",
+          params: { idSolicitud: String(item.solicitud?.id_solicitud) }
+      });
+      return;
+    }
+
+    if (!["ASIGNADA", "PENDIENTE"].includes(estado)) return;
+
+    const citaDate = new Date(item.fecha_cita);
+    const diffMs = citaDate.getTime() - Date.now();
+    const diffHours = diffMs / (1000 * 60 * 60);
+
+    if (diffHours > 2) {
+      Alert.alert(
+        "Aún es muy pronto",
+        `Solo puedes iniciar un servicio programado faltando 2 horas o menos.\n\nFaltan aproximadamente ${Math.ceil(diffHours)} horas para tu cita.`
+      );
+      return;
+    }
+
+    Alert.alert(
+      "Iniciar servicio",
+      "¿Te diriges ahora a la ubicación del cliente para este servicio programado?",
+      [
+        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "Sí, ir en camino", 
+          onPress: () => {
+            router.push({
+              pathname: "/(flows)/servicio-activo",
+              params: {
+                idSolicitud: String(item.solicitud?.id_solicitud),
+              }
+            });
+          }
+        }
+      ]
+    );
+  };
+
   const renderCita = ({ item }: { item: CitaAgenda }) => {
     const estadoLabel = item.estado?.descripcion ?? "—";
     const estadoStyle = getEstadoStyle(estadoLabel);
@@ -140,7 +231,11 @@ export default function TechnicianScheduleScreen() {
     const borderColor = modo === "historial" ? "#9ca3af" : "#407ee3";
 
     return (
-      <View style={[styles.card, { borderLeftColor: borderColor }]}>
+      <TouchableOpacity 
+        style={[styles.card, { borderLeftColor: borderColor }]}
+        activeOpacity={modo === "proximas" ? 0.7 : 1}
+        onPress={() => handleCitaTap(item)}
+      >
         <View style={styles.cardHeader}>
           <View style={styles.dateRow}>
             <Ionicons name="calendar-outline" size={16} color={borderColor} />
@@ -170,11 +265,60 @@ export default function TechnicianScheduleScreen() {
             {item.solicitud.descripcion}
           </Text>
         ) : null}
-      </View>
+      </TouchableOpacity>
     );
   };
 
-  const emptyMsg = modo === "proximas"
+  const renderGarantia = ({ item }: { item: GarantiaItem }) => {
+    const expires = new Date(item.fecha_expiracion);
+    const now = new Date();
+    const isWtyActive = expires > now;
+    const diffDays = Math.ceil((expires.getTime() - now.getTime()) / (1000 * 3600 * 24));
+    
+    const categoria = item.Servicio?.Solicitud?.subcategoria?.Categorium?.nombre || 'Servicio';
+    const subcategoria = item.Servicio?.Solicitud?.subcategoria?.nombre || '';
+    const nameCat = subcategoria ? `${categoria} - ${subcategoria}` : categoria;
+
+    return (
+      <TouchableOpacity
+        style={[styles.card, { borderLeftColor: isWtyActive ? "#16a34a" : "#ef4444" }]}
+        activeOpacity={0.7}
+        onPress={() => router.push({
+          pathname: "/(flows)/detalle-servicio" as never,
+          params: { idServicio: String(item.id_servicio) },
+        })}
+      >
+        <View style={styles.cardHeader}>
+          <View style={styles.dateRow}>
+            <Ionicons name="shield-checkmark" size={16} color={isWtyActive ? "#16a34a" : "#ef4444"} />
+            <Text style={[styles.dateText, { color: isWtyActive ? "#16a34a" : "#ef4444" }]}>
+              {isWtyActive ? "Garantía Activa" : "Expirada"}
+            </Text>
+          </View>
+          {isWtyActive && diffDays <= 5 && diffDays > 0 && (
+            <View style={[styles.badge, { backgroundColor: "#fef2f2" }]}>
+              <Text style={[styles.badgeText, { color: "#ef4444" }]}>
+                {diffDays} días rest.
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <Text style={styles.categoria}>{nameCat}</Text>
+        
+        <View style={styles.infoRow}>
+          <Text style={[styles.infoText, {flex:1}]}>Vence en:</Text>
+          <Text style={[styles.infoText, {fontWeight: "bold"}, !isWtyActive && { color: "#ef4444" }]}>
+            {formatFecha(item.fecha_expiracion)}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const emptyMsg = modo === "garantias"
+    ? "No tienes garantías registradas"
+    : modo === "proximas"
     ? "No tienes citas próximas"
     : "No tienes citas en el historial";
 
@@ -196,7 +340,7 @@ export default function TechnicianScheduleScreen() {
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.modoBtn, modo === "historial" && styles.modoBtnActiveGray]}
+          style={[styles.modoBtn, modo === "historial" && styles.modoBtnActive]}
           onPress={() => handleModoChange("historial")}
         >
           <Ionicons
@@ -208,37 +352,57 @@ export default function TechnicianScheduleScreen() {
             Historial
           </Text>
         </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={[styles.modoBtn, modo === "garantias" && styles.modoBtnActive]}
+          onPress={() => handleModoChange("garantias")}
+        >
+          <Ionicons
+            name="shield-checkmark"
+            size={16}
+            color={modo === "garantias" ? "#fff" : "#6b7280"}
+          />
+          <Text style={[styles.modoText, modo === "garantias" && styles.modoTextActive]}>
+            Garantías
+          </Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Filter chips */}
-      <View style={styles.filterRow}>
-        {estadosFiltro.map((estado) => (
-          <TouchableOpacity
-            key={estado}
-            style={[styles.chip, filtroEstado === estado && styles.chipActive]}
-            onPress={() => setFiltroEstado(estado)}
-          >
-            <Text style={[styles.chipText, filtroEstado === estado && styles.chipTextActive]}>
-              {getEstadoLabel(estado)}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      {/* Filter chips (solo para citas, no para garantias) */}
+      {modo !== "garantias" && (
+        <View style={styles.filterRow}>
+          {estadosFiltro.map((estado) => (
+            <TouchableOpacity
+              key={estado}
+              style={[styles.chip, filtroEstado === estado && styles.chipActive]}
+              onPress={() => setFiltroEstado(estado)}
+            >
+              <Text style={[styles.chipText, filtroEstado === estado && styles.chipTextActive]}>
+                {getEstadoLabel(estado)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color="#407ee3" />
         </View>
-      ) : citas.length === 0 ? (
+      ) : (modo === "garantias" ? garantias : citas).length === 0 ? (
         <View style={styles.center}>
-          <Ionicons name="calendar-outline" size={56} color="#d1d5db" />
+          <Ionicons name="document-text-outline" size={56} color="#d1d5db" />
           <Text style={styles.emptyText}>{emptyMsg}</Text>
         </View>
       ) : (
         <FlatList
-          data={citas}
-          keyExtractor={(item) => String(item.id_cita)}
-          renderItem={renderCita}
+          data={modo === "garantias" ? (garantias as any[]) : (citas as any[])}
+          keyExtractor={(item, index) => String(item.id_cita || item.id_garantia || index)}
+          renderItem={(props) => 
+            modo === "garantias"
+              ? renderGarantia({ item: props.item as GarantiaItem })
+              : renderCita({ item: props.item as CitaAgenda })
+          }
           contentContainerStyle={styles.list}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#407ee3"]} />

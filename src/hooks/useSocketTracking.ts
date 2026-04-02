@@ -15,6 +15,8 @@ interface Options {
   onTecnicoCerca?: (data: ProximidadPayload) => void;
   /** (CLIENTE) Técnico llegó (≤50m y detenido) */
   onTecnicoLlego?: (data: { id_solicitud: number }) => void;
+  /** (Opcional) Switch de seguridad para evitar carreras de UI native */
+  enabled?: boolean;
 }
 
 /**
@@ -29,6 +31,7 @@ export function useSocketTracking({
   onUbicacion,
   onTecnicoCerca,
   onTecnicoLlego,
+  enabled = true,
 }: Options) {
   const token = useAuthStore((s) => s.token);
   const role = useAuthStore((s) => s.user?.role);
@@ -36,7 +39,7 @@ export function useSocketTracking({
   const locationSubRef = useRef<Location.LocationSubscription | null>(null);
 
   useEffect(() => {
-    if (!token || !idSolicitud) return;
+    if (!token || !idSolicitud || !enabled) return;
 
     const socket = createSocket("/tracking", token);
     socketRef.current = socket;
@@ -80,33 +83,33 @@ export function useSocketTracking({
       socket.disconnect();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, idSolicitud]);
+  }, [token, idSolicitud, enabled]);
 
   async function startSendingLocation(socket: Socket, solicitudId: number) {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== "granted") {
-      console.warn("[tracking] Permiso de ubicación denegado");
-      return;
+    try {
+      const sub = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.High,
+          timeInterval: 4000,
+          distanceInterval: 5,
+        },
+        (loc) => {
+          socket.emit("client:tecnico_ubicacion", {
+            id_solicitud: solicitudId,
+            latitud: loc.coords.latitude,
+            longitud: loc.coords.longitude,
+            velocidad_kmh: (loc.coords.speed ?? 0) * 3.6,
+            en_movimiento: (loc.coords.speed ?? 0) > 0.5,
+          });
+        },
+      );
+
+      locationSubRef.current = sub;
+    } catch (err) {
+      console.warn("[socket/tracking] Native location error. WatchPosition aborted:", err);
+      // Esto previene que la app se crashee nativamente si los permisos no fueron dados
+      // o el GPS físico del dispositivo está apagado.
     }
-
-    const sub = await Location.watchPositionAsync(
-      {
-        accuracy: Location.Accuracy.High,
-        timeInterval: 4000,
-        distanceInterval: 5,
-      },
-      (loc) => {
-        socket.emit("client:tecnico_ubicacion", {
-          id_solicitud: solicitudId,
-          latitud: loc.coords.latitude,
-          longitud: loc.coords.longitude,
-          velocidad_kmh: (loc.coords.speed ?? 0) * 3.6,
-          en_movimiento: (loc.coords.speed ?? 0) > 0.5,
-        });
-      },
-    );
-
-    locationSubRef.current = sub;
   }
 
   return { socket: socketRef };

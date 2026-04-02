@@ -14,8 +14,10 @@ export function extraerCoordenadas(
   let result: { lat: number; lon: number } | null = null;
 
   // 1. Campos planos directos
-  if (isValidCoord(solicitud.latitud) && isValidCoord(solicitud.longitud)) {
-    result = { lat: solicitud.latitud as number, lon: solicitud.longitud as number };
+  const latPlano = parseCoord(solicitud.latitud);
+  const lonPlano = parseCoord(solicitud.longitud);
+  if (latPlano !== null && lonPlano !== null) {
+    result = { lat: latPlano, lon: lonPlano };
     console.log("[coords] Extraídas de campos planos:", result);
   }
 
@@ -23,9 +25,10 @@ export function extraerCoordenadas(
   if (!result) {
     const geoSolicitud = (solicitud as any).ubicacion_solicitud;
     if (geoSolicitud?.coordinates?.length === 2) {
-      const [lon, lat] = geoSolicitud.coordinates;
-      if (isValidCoord(lat) && isValidCoord(lon)) {
-        result = { lat, lon };
+      const parsedLon = parseCoord(geoSolicitud.coordinates[0]);
+      const parsedLat = parseCoord(geoSolicitud.coordinates[1]);
+      if (parsedLat !== null && parsedLon !== null) {
+        result = { lat: parsedLat, lon: parsedLon };
         console.log("[coords] Extraídas de ubicacion_solicitud GeoJSON:", result);
       }
     }
@@ -35,9 +38,10 @@ export function extraerCoordenadas(
   if (!result) {
     const geoServicio = (solicitud as any).ubicacion_servicio;
     if (geoServicio?.coordinates?.length === 2) {
-      const [lon, lat] = geoServicio.coordinates;
-      if (isValidCoord(lat) && isValidCoord(lon)) {
-        result = { lat, lon };
+      const parsedLon = parseCoord(geoServicio.coordinates[0]);
+      const parsedLat = parseCoord(geoServicio.coordinates[1]);
+      if (parsedLat !== null && parsedLon !== null) {
+        result = { lat: parsedLat, lon: parsedLon };
         console.log("[coords] Extraídas de ubicacion_servicio GeoJSON:", result);
       }
     }
@@ -45,10 +49,10 @@ export function extraerCoordenadas(
 
   // 4. Campos con nombres alternativos
   if (!result) {
-    const lat = (solicitud as any).lat ?? (solicitud as any).latitude;
-    const lon = (solicitud as any).lon ?? (solicitud as any).lng ?? (solicitud as any).longitude;
-    if (isValidCoord(lat) && isValidCoord(lon)) {
-      result = { lat, lon };
+    const latAlt = parseCoord((solicitud as any).lat ?? (solicitud as any).latitude);
+    const lonAlt = parseCoord((solicitud as any).lon ?? (solicitud as any).lng ?? (solicitud as any).longitude);
+    if (latAlt !== null && lonAlt !== null) {
+      result = { lat: latAlt, lon: lonAlt };
       console.log("[coords] Extraídas de campos alternativos:", result);
     }
   }
@@ -67,9 +71,17 @@ export function extraerCoordenadas(
   return result;
 }
 
-/** Verifica que un valor sea un número finito y no sea 0 (ubicación inválida) */
-function isValidCoord(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value !== 0;
+/** Intenta transformar dinámicamente el valor en número finito real */
+function parseCoord(value: unknown): number | null {
+  let num: number;
+  if (typeof value === "number") {
+    num = value;
+  } else if (typeof value === "string") {
+    num = Number(value);
+  } else {
+    return null;
+  }
+  return Number.isFinite(num) && num !== 0 ? num : null;
 }
 
 /**

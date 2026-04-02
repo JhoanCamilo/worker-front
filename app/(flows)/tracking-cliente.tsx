@@ -2,9 +2,12 @@ import { useSocketServicios } from "@/src/hooks/useSocketServicios";
 import { useSocketTracking } from "@/src/hooks/useSocketTracking";
 import { useToast } from "@/src/hooks/useToast";
 import { useServicioStore } from "@/src/store/servicio.store";
+import { getServicioDetalle } from "@/src/services/servicio.service";
+import { getSolicitudDetalle } from "@/src/services/solicitud.service";
+import { extraerCoordenadas } from "@/src/utils/coordinates";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
     StyleSheet,
@@ -13,6 +16,20 @@ import {
     View,
 } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
+
+// Formula Haversine básica para distancia en metros
+function getDistanceFromLatLonInM(lat1: number, lon1: number, lat2: number, lon2: number) {
+  var R = 6371; // Radio de earth en km
+  var dLat = (lat2 - lat1) * (Math.PI / 180);
+  var dLon = (lon2 - lon1) * (Math.PI / 180);
+  var a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  var d = R * c; // Distancia en km
+  return d * 1000;
+}
 
 type Estado = "EN_CAMINO" | "CERCA" | "LLEGO" | "EN_SERVICIO" | "FINALIZADO";
 
@@ -33,6 +50,71 @@ export default function TrackingClienteScreen() {
     (s) => s.updateTecnicoLocation,
   );
   const clearServicioActivo = useServicioStore((s) => s.clearServicioActivo);
+  const updateFaseTracking = useServicioStore((s) => s.updateFaseTracking);
+
+  // ── Inicialización desde backend si se monta tarde o idServicio es 0 ──
+  useEffect(() => {
+    if (!idSolicitud) return;
+    updateFaseTracking(estado);
+
+    const resolveServiceAndDetails = async () => {
+      try {
+        let currentIdServicio = Number(idServicio);
+        
+        // Si no tenemos ID de servicio (0), lo buscamos en los detalles de la solicitud
+        if (currentIdServicio === 0) {
+          const req = await getSolicitudDetalle(Number(idSolicitud));
+          if (req.servicios_generados && req.servicios_generados.length > 0) {
+            currentIdServicio = req.servicios_generados[0].id_servicio;
+          }
+        }
+
+        if (currentIdServicio > 0) {
+          const detalle = await getServicioDetalle(currentIdServicio);
+          const coordsTech = extraerCoordenadas(detalle.tecnico || {});
+          if (coordsTech) {
+            updateTecnicoLocation(coordsTech.lat, coordsTech.lon);
+            
+            if (servicioActivo && detalle.id_estado === 4) {
+              const dist = getDistanceFromLatLonInM(
+                servicioActivo.cliente_lat, servicioActivo.cliente_lon,
+                coordsTech.lat, coordsTech.lon
+              );
+              setDistanciaMetros(dist);
+              if (dist <= 50) {
+                setEstado("LLEGO");
+                updateFaseTracking("LLEGO");
+              } else if (dist <= 500) {
+                setEstado("CERCA");
+                updateFaseTracking("CERCA");
+              }
+            }
+          }
+
+          if (detalle.id_estado === 5) {
+            setEstado("EN_SERVICIO");
+            updateFaseTracking("EN_SERVICIO");
+          }
+        }
+      } catch (err) {
+        console.warn("[tracking] Error inicializando datos:", err);
+      }
+    };
+
+    resolveServiceAndDetails();
+  }, [idServicio, idSolicitud]);
+
+  // ── Sincronizar estado global ──────────────────────────────────
+  useEffect(() => {
+    if (servicioActivo?.fase_tracking && servicioActivo.fase_tracking !== estado) {
+      setEstado(servicioActivo.fase_tracking);
+    }
+  }, [servicioActivo?.fase_tracking]);
+
+  const updateEstado = (nuevo: Estado) => {
+    setEstado(nuevo);
+    updateFaseTracking(nuevo);
+  };
 
   // ── Socket: recibir GPS del técnico ───────────────────────────
   useSocketTracking({
@@ -58,11 +140,11 @@ export default function TrackingClienteScreen() {
       }
     },
     onTecnicoCerca: () => {
-      setEstado("CERCA");
+      updateEstado("CERCA");
       showSuccess("El técnico está cerca (menos de 500m)");
     },
     onTecnicoLlego: () => {
-      setEstado("LLEGO");
+      updateEstado("LLEGO");
       showSuccess("¡El técnico ha llegado!");
     },
   });
@@ -70,19 +152,12 @@ export default function TrackingClienteScreen() {
   // ── Socket: lifecycle del servicio ────────────────────────────
   useSocketServicios({
     onServicioIniciado: () => {
-      setEstado("EN_SERVICIO");
-      // Mostrar brevemente que inició, luego enviar al home
-      // El cliente recibirá push notification cuando el servicio finalice
-      setTimeout(() => {
-        clearServicioActivo();
-        router.replace("/(tabs)/home");
-      }, 3000);
+      updateEstado("EN_SERVICIO");
+      showSuccess("¡Servicio Iniciado!");
     },
     onServicioFinalizado: (data) => {
-      // Fallback: si el cliente aún está en esta pantalla
-      setEstado("FINALIZADO");
+      updateEstado("FINALIZADO");
       setTimeout(() => {
-        clearServicioActivo();
         router.replace({
           pathname: "/(flows)/calificar",
           params: {
@@ -103,6 +178,22 @@ export default function TrackingClienteScreen() {
     );
   }
 
+  // Prevención de crasheo nativo si las coordenadas están rotas o no listas
+  if (
+    !servicioActivo.cliente_lat ||
+    !servicioActivo.cliente_lon ||
+    Number.isNaN(servicioActivo.cliente_lat) ||
+    Number.isNaN(servicioActivo.cliente_lon) ||
+    (servicioActivo.cliente_lat === 0 && servicioActivo.cliente_lon === 0)
+  ) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#407ee3" />
+        <Text style={styles.loadingText}>Determinando coordenadas de visualización...</Text>
+      </View>
+    );
+  }
+
   const distanciaStr =
     distanciaMetros != null
       ? distanciaMetros < 1000
@@ -114,8 +205,8 @@ export default function TrackingClienteScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={24} color="#fff" />
+        <TouchableOpacity onPress={() => router.replace("/(tabs)/home")} style={styles.backBtn}>
+          <Ionicons name="home" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Seguimiento en vivo</Text>
         <View style={{ width: 36 }} />

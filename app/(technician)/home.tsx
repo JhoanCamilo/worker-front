@@ -82,7 +82,28 @@ export default function TechnicianHomeScreen() {
 
       {/* Botón de estado */}
       <View style={styles.footer}>
-        {!servicioActivo && solicitudPendiente?.solicitud?.id_solicitud ? (
+        {servicioActivo ? (
+          <TouchableOpacity
+            style={[styles.pendingCta, { borderColor: "#10b981", backgroundColor: "#ecfdf5" }]}
+            activeOpacity={0.85}
+            onPress={() =>
+              router.push({
+                pathname: "/(flows)/servicio-activo",
+                params: {
+                  idSolicitud: String(servicioActivo.id_solicitud),
+                  idServicio: String(servicioActivo.id_servicio),
+                },
+              })
+            }
+          >
+            <Text style={[styles.pendingCtaTitle, { color: "#047857" }]}>
+              Servicio activo en progreso
+            </Text>
+            <Text style={[styles.pendingCtaText, { color: "#065f46" }]} numberOfLines={1}>
+              Toca para volver a la pantalla del servicio
+            </Text>
+          </TouchableOpacity>
+        ) : solicitudPendiente?.solicitud?.id_solicitud ? (
           <TouchableOpacity
             style={styles.pendingCta}
             activeOpacity={0.85}

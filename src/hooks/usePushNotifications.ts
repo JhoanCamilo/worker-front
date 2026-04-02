@@ -87,18 +87,10 @@ export function usePushNotifications() {
           return;
         }
 
-        // Request permissions
-        const { status: existingStatus } =
-          await Notifications.getPermissionsAsync();
-        let finalStatus = existingStatus;
-
-        if (existingStatus !== "granted") {
-          const { status } = await Notifications.requestPermissionsAsync();
-          finalStatus = status;
-        }
-
-        if (finalStatus !== "granted") {
-          console.log("[push] Permission not granted");
+        // Get current notification permissions
+        const { status } = await Notifications.getPermissionsAsync();
+        if (status !== "granted") {
+          console.log("[push] Permission not granted, skipping registration");
           return;
         }
 

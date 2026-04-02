@@ -1,4 +1,6 @@
 import { crearCalificacion } from "@/src/services/calificacion.service";
+import { confirmarPagoServicio } from "@/src/services/servicio.service";
+import { useServicioStore } from "@/src/store/servicio.store";
 import { useToast } from "@/src/hooks/useToast";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -24,6 +26,7 @@ export default function CalificarScreen() {
   }>();
   const router = useRouter();
   const { success: showSuccess, error: showError } = useToast();
+  const clearServicioActivo = useServicioStore((s) => s.clearServicioActivo);
 
   const valorTotalNum = valorTotal ? Number(valorTotal) : null;
   const skipPayment = !valorTotalNum || valorTotalNum <= 0;
@@ -47,6 +50,7 @@ export default function CalificarScreen() {
         comentario: comentario.trim() || undefined,
       });
       showSuccess("¡Gracias por tu calificación!");
+      clearServicioActivo();
       router.replace("/(tabs)/home");
     } catch (err: any) {
       const msg =
@@ -54,6 +58,15 @@ export default function CalificarScreen() {
       showError(msg);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleConfirmPay = async () => {
+    try {
+      await confirmarPagoServicio(Number(idServicio));
+      setScreen("rating");
+    } catch {
+      showError("Error al notificar confirmación de pago. Intenta de nuevo.");
     }
   };
 
@@ -88,7 +101,7 @@ export default function CalificarScreen() {
         {screen === "payment" ? (
           <PaymentConfirmScreen
             valorTotal={valorTotalNum!}
-            onConfirm={() => setScreen("rating")}
+            onConfirm={handleConfirmPay}
             onSkip={() => setScreen("rating")}
           />
         ) : (
@@ -99,7 +112,7 @@ export default function CalificarScreen() {
             setComentario={setComentario}
             submitting={submitting}
             onSubmit={handleSubmitRating}
-            onSkip={() => router.replace("/(tabs)/home")}
+            onSkip={() => { clearServicioActivo(); router.replace("/(tabs)/home"); }}
           />
         )}
       </ScrollView>
@@ -130,6 +143,16 @@ function PaymentConfirmScreen({
         <Text style={styles.cotizacionValue}>
           ${valorTotal.toLocaleString("es-CO")}
         </Text>
+      </View>
+
+      <View style={styles.warrantyBox}>
+        <Ionicons name="shield-checkmark" size={20} color="#16a34a" />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.warrantyTitle}>Garantía incluida</Text>
+          <Text style={styles.warrantyDesc}>
+            Este servicio incluye 30 días de garantía a partir de la fecha de finalización.
+          </Text>
+        </View>
       </View>
 
       <TouchableOpacity style={styles.continueBtn} onPress={onConfirm}>
@@ -337,4 +360,28 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   skipText: { color: "#9ca3af", fontSize: 14 },
+
+  // ── Warranty Box ──
+  warrantyBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: "#f0fdf4",
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 20,
+  },
+  warrantyTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#16a34a",
+    marginBottom: 2,
+  },
+  warrantyDesc: {
+    fontSize: 12,
+    color: "#15803d",
+    lineHeight: 17,
+  },
 });

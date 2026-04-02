@@ -1,9 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { useServicioStore } from "@/src/store/servicio.store";
 import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 export default function ClientHomeScreen() {
   const router = useRouter();
+  const servicioActivo = useServicioStore((s) => s.servicioActivo);
 
   return (
     <View style={styles.container}>
@@ -26,6 +28,29 @@ export default function ClientHomeScreen() {
           <Text style={styles.scheduleText}>Agendar servicio</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Return to active service banner */}
+      {servicioActivo && (
+        <TouchableOpacity
+          style={styles.activeServiceBanner}
+          activeOpacity={0.8}
+          onPress={() =>
+            router.push({
+              pathname: "/(flows)/tracking-cliente",
+              params: {
+                idSolicitud: String(servicioActivo.id_solicitud),
+                idServicio: String(servicioActivo.id_servicio),
+              },
+            })
+          }
+        >
+          <Ionicons name="map" size={24} color="#fff" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.activeServiceTitle}>Servicio en progreso</Text>
+            <Text style={styles.activeServiceText}>Toca aquí para volver al mapa</Text>
+          </View>
+        </TouchableOpacity>
+      )}
 
       {/* Body con logo de fondo */}
       <View style={styles.body}>
@@ -86,5 +111,30 @@ const styles = StyleSheet.create({
     color: "#000",
     fontSize: 15,
     fontWeight: "600",
+  },
+  activeServiceBanner: {
+    backgroundColor: "#10b981",
+    marginHorizontal: 24,
+    marginTop: 16,
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  activeServiceTitle: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  activeServiceText: {
+    color: "#fff",
+    fontSize: 13,
+    marginTop: 2,
   },
 });

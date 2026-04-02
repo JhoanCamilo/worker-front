@@ -46,7 +46,11 @@ export function SolicitudDisponibleModal({
           </Text>
 
           {/* Categoría y distancia (dirección oculta hasta aceptar cotización) */}
-          <Text style={styles.category}>{solicitud.subcategoria}</Text>
+          <Text style={styles.category}>
+            {typeof solicitud.subcategoria === 'string' 
+              ? solicitud.subcategoria 
+              : (solicitud.subcategoria as any)?.nombre || "Servicio"}
+          </Text>
           <Text style={styles.distance}>A {distKm} km de tu ubicación</Text>
 
           {/* Banner programado */}

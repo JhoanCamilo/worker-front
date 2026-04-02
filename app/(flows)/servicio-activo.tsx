@@ -4,16 +4,18 @@ import { useToast } from "@/src/hooks/useToast";
 import {
     finalizarServicio,
     iniciarServicio,
+    getServicioDetalle
 } from "@/src/services/servicio.service";
 import { getSolicitudDetalle } from "@/src/services/solicitud.service";
 import { useServicioStore } from "@/src/store/servicio.store";
 import { extraerCoordenadas } from "@/src/utils/coordinates";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import React, { Component, useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
+    AppState,
     Modal,
     Pressable,
     StyleSheet,
@@ -22,7 +24,28 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
-import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
+import MapView, { Marker } from "react-native-maps";
+
+// ── Error Boundary para prevenir crash nativo al renderizar el mapa ──
+class MapErrorBoundary extends Component<
+  { children: React.ReactNode; fallback: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error: Error) {
+    console.warn("[MapError] Crash nativo capturado por ErrorBoundary:", error.message);
+  }
+  render() {
+    if (this.state.hasError) return this.props.fallback;
+    return this.props.children;
+  }
+}
 
 type Fase = "EN_CAMINO" | "LLEGO" | "EN_SERVICIO" | "FINALIZADO";
 const MEDIO_PAGO_EFECTIVO = 1;
@@ -50,6 +73,10 @@ export default function ServicioActivoScreen() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [valorPagado, setValorPagado] = useState("");
 
+  // Solo rastrear si la app está en primer plano (watchPosition crashea en background en Android)
+  // Los permisos de ubicación ya se solicitan al inicio desde _layout.tsx
+  const [appIsActive, setAppIsActive] = useState(AppState.currentState === "active");
+
   const servicioActivo = useServicioStore((s) => s.servicioActivo);
   const setServicioActivo = useServicioStore((s) => s.setServicioActivo);
   const clearServicioActivo = useServicioStore((s) => s.clearServicioActivo);
@@ -57,8 +84,23 @@ export default function ServicioActivoScreen() {
   const idSolicitudNum = Number(idSolicitud);
   const idServicioNum = idServicioParam ? Number(idServicioParam) : null;
 
+  // ── Detectar cambios Foreground/Background para proteger watchPosition ──
+  useEffect(() => {
+    let mounted = true;
+    const subscription = AppState.addEventListener("change", (nextAppState) => {
+      if (mounted) setAppIsActive(nextAppState === "active");
+    });
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, []);
+
   // Fallback: al abrir desde push o app recien iniciada puede no existir estado en memoria.
   useEffect(() => {
+    if (servicioActivo && fase !== servicioActivo.fase_tracking && servicioActivo.fase_tracking) {
+      setFase(servicioActivo.fase_tracking as Fase);
+    }
     if (servicioActivo) return;
     if (!Number.isFinite(idSolicitudNum)) return;
 
@@ -74,11 +116,19 @@ export default function ServicioActivoScreen() {
           return;
         }
 
+        let recoveredIdServicio =
+          idServicioNum != null && Number.isFinite(idServicioNum)
+            ? idServicioNum
+            : 0;
+
+        // Si es 0 o no tenemos un ID válido, buscarlo en las solicitudes generadas
+        if (recoveredIdServicio === 0 && solicitud.servicios_generados?.length) {
+          recoveredIdServicio = solicitud.servicios_generados[0].id_servicio;
+          setIdServicio(recoveredIdServicio);
+        }
+
         setServicioActivo({
-          id_servicio:
-            idServicioNum != null && Number.isFinite(idServicioNum)
-              ? idServicioNum
-              : 0,
+          id_servicio: recoveredIdServicio,
           id_solicitud: idSolicitudNum,
           id_tecnico: 0,
           id_estado: solicitud.id_estado,
@@ -106,8 +156,10 @@ export default function ServicioActivoScreen() {
   ]);
 
   // ── Socket: enviar GPS automáticamente (el hook detecta rol TECH) ──
+  // Habilita el tracking SOLAMENTE si estamos activos. El expo watchPosition crashea en back.
   useSocketTracking({
     idSolicitud: Number(idSolicitud),
+    enabled: appIsActive,
     onTecnicoLlego: () => {
       if (fase === "EN_CAMINO") {
         setFase("LLEGO");
@@ -116,20 +168,27 @@ export default function ServicioActivoScreen() {
     },
   });
 
+  // ── Sincronizar Fase en Store para recuperación ─────────────────
+  useEffect(() => {
+    if (servicioActivo) {
+      useServicioStore.getState().updateFaseTracking(fase);
+    }
+  }, [fase, servicioActivo]);
+
   // ── Socket: lifecycle del servicio ──────────────────────────────
   useSocketServicios({
     onPagoConfirmado: () => {
       showSuccess("Pago confirmado. Servicio cerrado correctamente");
       clearServicioActivo();
       setTimeout(() => {
-        router.replace("/(tabs)/home");
+        router.replace("/(technician)/home");
       }, 1200);
     },
     onCalificacionRecibida: (data) => {
       showSuccess(`¡Calificación recibida: ${data.puntuacion}⭐!`);
       clearServicioActivo();
       setTimeout(() => {
-        router.replace("/(tabs)/home");
+        router.replace("/(technician)/home");
       }, 1500);
     },
   });
@@ -252,11 +311,7 @@ export default function ServicioActivoScreen() {
         valor_total: monto,
       });
       setFase("FINALIZADO");
-      clearServicioActivo();
       showSuccess("Servicio finalizado. Esperando confirmación del cliente...");
-      setTimeout(() => {
-        router.replace("/(tabs)/home");
-      }, 250);
     } catch (err: any) {
       const msg =
         err?.response?.data?.message ?? "No se pudo finalizar el servicio";
@@ -265,6 +320,72 @@ export default function ServicioActivoScreen() {
       setActionLoading(false);
     }
   };
+
+  if (servicioActivo?.fase_tracking === "FINALIZADO") {
+    return (
+      <View style={[styles.container, styles.center]}>
+        <ActivityIndicator size="large" color="#10b981" />
+        <Text style={{ fontSize: 20, fontWeight: "700", marginTop: 16 }}>Esperando confirmación</Text>
+        <Text style={{ fontSize: 15, color: "#6b7280", textAlign: "center", paddingHorizontal: 32 }}>
+          El cliente debe confirmar el pago en su aplicación para concluir totalmente el servicio de forma confirmada.
+        </Text>
+
+        <View style={{ marginTop: 40, width: "100%", paddingHorizontal: 32, gap: 12 }}>
+          <TouchableOpacity
+            style={{ backgroundColor: "#407ee3", padding: 14, borderRadius: 10, alignItems: "center" }}
+            activeOpacity={0.8}
+            onPress={async () => {
+              try {
+                // Sincronización manual 
+                const det = await getServicioDetalle(servicioActivo.id_servicio);
+                if (det.id_estado === 6) { // 6 = COMPLETADO
+                   clearServicioActivo();
+                   router.replace("/(technician)/home");
+                   return;
+                }
+                Alert.alert("Aún no confirmado", "El cliente aún no ha confirmado el pago en su aplicación.");
+              } catch {
+                Alert.alert("Error", "No se pudo actualizar el estado.");
+              }
+            }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Actualizar estado</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={{ 
+              backgroundColor: "#f9fafb", 
+              padding: 14, 
+              borderRadius: 10, 
+              alignItems: "center",
+              borderWidth: 1.5,
+              borderColor: "#6b7280" 
+            }}
+            activeOpacity={0.8}
+            onPress={() => {
+              Alert.alert(
+                "Dejar pago pendiente",
+                "¿Deseas salir y dejar el pago pendiente? Ya cumpliste con el servicio y serás notificado cuando el cliente finalmente lo confirme.",
+                [
+                  { text: "No, esperar", style: "cancel" },
+                  { 
+                    text: "Sí, salir ahora", 
+                    onPress: () => {
+                      clearServicioActivo();
+                      router.replace("/(technician)/home");
+                    }
+                  }
+                ]
+              );
+            }}
+          >
+            <Text style={{ color: "#374151", fontWeight: "700", fontSize: 15 }}>Dejar pendiente y salir</Text>
+          </TouchableOpacity>
+        </View>
+
+      </View>
+    );
+  }
 
   if (!servicioActivo) {
     return (
@@ -275,44 +396,95 @@ export default function ServicioActivoScreen() {
     );
   }
 
+  // Si el backend dice que esto está cancelado o completado y ya se cerró la fase_tracking, chao
+  if (servicioActivo.id_estado >= 6 && fase === "FINALIZADO") {
+    return (
+      <View style={styles.center}>
+        <Ionicons name="checkmark-done-circle" size={48} color="#10b981" />
+        <Text style={{ color: "#4b5563", marginTop: 12, fontSize: 16, textAlign: 'center' }}>
+          Este servicio ha finalizado.
+        </Text>
+        <TouchableOpacity 
+          style={{ marginTop: 24, padding: 12, backgroundColor: '#407ee3', borderRadius: 8 }} 
+          onPress={() => {
+            clearServicioActivo();
+            router.replace("/(technician)/home");
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: 'bold' }}>Volver al inicio</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // Guard: si las coordenadas son inválidas el MapView de Google crashea la app entera en Android
+  if (
+    !servicioActivo.cliente_lat ||
+    !servicioActivo.cliente_lon ||
+    Number.isNaN(servicioActivo.cliente_lat) ||
+    Number.isNaN(servicioActivo.cliente_lon) ||
+    (servicioActivo.cliente_lat === 0 && servicioActivo.cliente_lon === 0)
+  ) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#407ee3" />
+        <Text style={styles.loadingText}>Obteniendo ubicación del cliente...</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={24} color="#fff" />
+        <TouchableOpacity onPress={() => router.replace("/(technician)/home")} style={styles.backBtn}>
+          <Ionicons name="home" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Servicio activo</Text>
         <View style={{ width: 36 }} />
       </View>
 
-      {/* Map */}
-      <MapView
-        ref={mapRef}
-        provider={PROVIDER_GOOGLE}
-        style={styles.map}
-        showsUserLocation
-        showsMyLocationButton
-        initialRegion={{
-          latitude: servicioActivo.cliente_lat,
-          longitude: servicioActivo.cliente_lon,
-          latitudeDelta: 0.015,
-          longitudeDelta: 0.015,
-        }}
-      >
-        {/* Marcador del cliente (destino) */}
-        <Marker
-          coordinate={{
-            latitude: servicioActivo.cliente_lat,
-            longitude: servicioActivo.cliente_lon,
-          }}
-          title="Ubicación del cliente"
-        >
-          <View style={styles.markerClient}>
-            <Ionicons name="home" size={20} color="#fff" />
+      {/* Map — envuelto en ErrorBoundary para capturar crashes nativos */}
+      <MapErrorBoundary
+        fallback={
+          <View style={[styles.center, styles.map]}>
+            <Ionicons name="warning-outline" size={48} color="#f59e0b" />
+            <Text style={[styles.loadingText, { textAlign: "center", paddingHorizontal: 24 }]}>
+              No se pudo cargar el mapa.{"\n"}Puedes continuar con las acciones de la pantalla.
+            </Text>
           </View>
-        </Marker>
-      </MapView>
+        }
+      >
+        {appIsActive ? (
+          <MapView
+            ref={mapRef}
+            style={styles.map}
+            initialRegion={{
+              latitude: servicioActivo.cliente_lat,
+              longitude: servicioActivo.cliente_lon,
+              latitudeDelta: 0.015,
+              longitudeDelta: 0.015,
+            }}
+          >
+            <Marker
+              coordinate={{
+                latitude: servicioActivo.cliente_lat,
+                longitude: servicioActivo.cliente_lon,
+              }}
+              title="Ubicación del cliente"
+            >
+              <View style={styles.markerClient}>
+                <Ionicons name="home" size={20} color="#fff" />
+              </View>
+            </Marker>
+          </MapView>
+        ) : (
+          <View style={[styles.center, styles.map]}>
+            <Ionicons name="location-outline" size={48} color="#9ca3af" />
+            <Text style={styles.loadingText}>Conectando GPS y mapa...</Text>
+          </View>
+        )}
+      </MapErrorBoundary>
 
       {/* Status card */}
       <View style={styles.statusCard}>

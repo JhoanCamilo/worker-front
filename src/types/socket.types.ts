@@ -26,6 +26,10 @@ export interface NuevaSolicitudPayload {
   distancia_metros: number;
   priority_score: number;
   fecha_programada?: string;
+
+  // Propiedades opcionales para soportar el payload anidado del backend
+  solicitudData?: Record<string, any>;
+  tecnicos?: Array<{ distancia_metros: number; priority_score: number; [key: string]: any }>;
 }
 
 export interface CotizacionPayload {

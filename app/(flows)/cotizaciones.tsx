@@ -162,6 +162,7 @@ export default function CotizacionesScreen() {
         valor_cotizacion: cotizacionValor,
         cliente_lat: clienteLat,
         cliente_lon: clienteLon,
+        fase_tracking: "EN_CAMINO",
       });
 
       router.replace({
@@ -292,22 +293,24 @@ export default function CotizacionesScreen() {
               <Text style={styles.cardLabel}>Tiempo estimado</Text>
               <Text style={styles.cardText}>{item.tiempo_estimado}</Text>
             </View>
-            {item.dias_garantia != null && item.dias_garantia > 0 && (
-              <View style={styles.cardCol}>
-                <Text style={styles.cardLabel}>Garantía</Text>
-                <Text style={styles.cardText}>{item.dias_garantia} días</Text>
-              </View>
-            )}
+            <View style={styles.cardCol}>
+              <Text style={styles.cardLabel}>Garantía</Text>
+              <Text style={styles.cardText}>30 días</Text>
+            </View>
           </View>
 
-          {item.incluye_materiales && (
-            <View style={styles.badgeRow}>
+          <View style={styles.badgeRow}>
+            <View style={[styles.badge, { backgroundColor: "#f0fdf4", borderWidth: 1, borderColor: "#bbf7d0" }]}>
+              <Ionicons name="shield-checkmark" size={13} color="#16a34a" />
+              <Text style={[styles.badgeText, { color: "#16a34a" }]}>Garantía de 30 días incluida</Text>
+            </View>
+            {item.incluye_materiales && (
               <View style={styles.badge}>
                 <Ionicons name="construct" size={12} color="#10b981" />
                 <Text style={styles.badgeText}>Incluye materiales</Text>
               </View>
-            </View>
-          )}
+            )}
+          </View>
         </View>
 
         {/* Disclaimer */}
@@ -460,6 +463,14 @@ export default function CotizacionesScreen() {
                   <Ionicons name="alert-circle" size={18} color="#f59e0b" />
                   <Text style={styles.modalDisclaimerText}>
                     Este valor está sujeto a cambios tras la inspección visual del técnico en el sitio.
+                  </Text>
+                </View>
+
+                {/* Garantía */}
+                <View style={[styles.modalDisclaimer, { backgroundColor: "#f0fdf4", marginTop: 0 }]}>
+                  <Ionicons name="shield-checkmark" size={18} color="#16a34a" />
+                  <Text style={[styles.modalDisclaimerText, { color: "#15803d" }]}>
+                    Este servicio incluye 30 días de garantía a partir de la fecha de finalización.
                   </Text>
                 </View>
               </>
@@ -666,7 +677,7 @@ const styles = StyleSheet.create({
   cardLabel: { fontSize: 12, color: "#6b7280", marginBottom: 2 },
   cardText: { fontSize: 14, color: "#374151" },
 
-  badgeRow: { marginTop: 8 },
+  badgeRow: { marginTop: 8, flexDirection: "row", flexWrap: "wrap", gap: 6 },
   badge: {
     flexDirection: "row",
     alignItems: "center",

@@ -67,6 +67,7 @@ export default function TecnicoSolicitudScreen() {
         valor_cotizacion: Number(valor),
         descripcion: descripcion || "Servicio técnico",
         tiempo_estimado: tiempoEstimado || "Por definir",
+        dias_garantia: 30,
       });
 
       // Pasar a inactivo mientras el cliente decide
@@ -135,13 +136,34 @@ export default function TecnicoSolicitudScreen() {
   if (!solicitud) {
     return (
       <View style={styles.center}>
-        <Text style={styles.errorText}>No se pudo cargar la solicitud.</Text>
+        <Text style={{ color: "#ef4444", fontWeight: "600", fontSize: 16 }}>No se pudo cargar la solicitud.</Text>
       </View>
     );
   }
 
-  const categoria = solicitud.subcategoria.Categorium.nombre;
-  const subcategoria = solicitud.subcategoria.nombre;
+  // 1: CREADA, 2: BUSCANDO_TECNICO. Si es > 2, ya no se puede cotizar.
+  if (solicitud.id_estado > 2) {
+    return (
+      <View style={styles.center}>
+        <Ionicons name="time" size={48} color="#9ca3af" />
+        <Text style={{ color: "#ef4444", fontWeight: "600", marginTop: 12, fontSize: 16 }}>
+          Esta solicitud expiró o ya fue asignada.
+        </Text>
+        <TouchableOpacity 
+          style={{ marginTop: 24, padding: 12, backgroundColor: '#407ee3', borderRadius: 8 }} 
+          onPress={() => router.replace("/(technician)/home")}
+        >
+          <Text style={{ color: '#fff', fontWeight: 'bold' }}>Volver al inicio</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const categoria = 
+    solicitud.subcategoria?.Categorium?.nombre || 
+    (solicitud.subcategoria as any)?.Categoria?.nombre || 
+    "Categoría General";
+  const subcategoria = solicitud.subcategoria?.nombre || "Servicio Solicitado";
   const esInmediata =
     solicitud.tipo_servicio === "INMEDIATA" ||
     solicitud.tipo_servicio === "INMEDIATO";

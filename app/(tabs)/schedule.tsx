@@ -2,6 +2,7 @@ import {
   getMisSolicitudes,
   SolicitudCliente,
 } from "@/src/services/solicitud.service";
+import { GarantiaItem, getGarantiasCliente } from "@/src/services/garantia.service";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
@@ -21,9 +22,10 @@ const TIPOS_FILTRO = ["Todas", "INMEDIATA", "PROGRAMADO"];
 export default function ClientScheduleScreen() {
   const router = useRouter();
   const [solicitudes, setSolicitudes] = useState<SolicitudCliente[]>([]);
+  const [garantias, setGarantias] = useState<GarantiaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [modo, setModo] = useState<"activas" | "historial">("activas");
+  const [modo, setModo] = useState<"activas" | "historial" | "garantias">("activas");
   const [filtroTipo, setFiltroTipo] = useState("Todas");
   const [pagina, setPagina] = useState(1);
   const [totalPaginas, setTotalPaginas] = useState(1);
@@ -56,27 +58,56 @@ export default function ClientScheduleScreen() {
     [filtroTipo, modo],
   );
 
+  const fetchGarantias = useCallback(
+    async (page = 1, append = false) => {
+      try {
+        const res = await getGarantiasCliente(page, 15);
+        const items = res?.garantias ?? [];
+        setGarantias((prev) => (append ? [...prev, ...items] : items));
+        setTotalPaginas(res?.total_paginas ?? 1);
+        setPagina(page);
+      } catch (err) {
+        console.error("[agenda-cliente] Error garantias:", err);
+        if (!append) setGarantias([]);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     setLoading(true);
-    fetchSolicitudes(1).finally(() => setLoading(false));
-  }, [fetchSolicitudes]);
+    if (modo === "garantias") {
+      fetchGarantias(1).finally(() => setLoading(false));
+    } else {
+      fetchSolicitudes(1).finally(() => setLoading(false));
+    }
+  }, [fetchSolicitudes, fetchGarantias, modo]);
 
-  const handleModoChange = (nuevoModo: "activas" | "historial") => {
+  const handleModoChange = (nuevoModo: "activas" | "historial" | "garantias") => {
     if (nuevoModo === modo) return;
     setModo(nuevoModo);
     setFiltroTipo("Todas");
+    setPagina(1);
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchSolicitudes(1);
+    if (modo === "garantias") {
+      await fetchGarantias(1);
+    } else {
+      await fetchSolicitudes(1);
+    }
     setRefreshing(false);
   };
 
   const onEndReached = async () => {
     if (loadingMore || pagina >= totalPaginas) return;
     setLoadingMore(true);
-    await fetchSolicitudes(pagina + 1, true);
+    if (modo === "garantias") {
+      await fetchGarantias(pagina + 1, true);
+    } else {
+      await fetchSolicitudes(pagina + 1, true);
+    }
     setLoadingMore(false);
   };
 
@@ -88,12 +119,20 @@ export default function ClientScheduleScreen() {
       (c) => c.estado === "ACEPTADA",
     );
 
-    if (servicio && ["EN_PROGRESO", "EN_CAMINO"].includes(estado)) {
+    if (["COMPLETADA", "FINALIZADA", "CANCELADA"].includes(estado)) {
+      router.push({
+        pathname: "/(flows)/detalle-servicio" as never,
+        params: { idServicio: String(servicio?.id_servicio || 0) },
+      });
+      return;
+    }
+
+    if (["EN_PROGRESO", "EN_CAMINO", "ASIGNADA"].includes(estado) && cotizacionAceptada) {
       router.push({
         pathname: "/(flows)/tracking-cliente",
         params: {
           idSolicitud: String(item.id_solicitud),
-          idServicio: String(servicio.id_servicio),
+          idServicio: String(servicio?.id_servicio || 0),
         },
       });
     } else if (tieneCotizaciones && !cotizacionAceptada) {
@@ -277,8 +316,57 @@ export default function ClientScheduleScreen() {
     );
   };
 
+  const renderGarantia = ({ item }: { item: GarantiaItem }) => {
+    const expires = new Date(item.fecha_expiracion);
+    const now = new Date();
+    const isWtyActive = expires > now;
+    const diffDays = Math.ceil((expires.getTime() - now.getTime()) / (1000 * 3600 * 24));
+    
+    const categoria = item.Servicio?.Solicitud?.subcategoria?.Categorium?.nombre || 'Servicio';
+    const subcategoria = item.Servicio?.Solicitud?.subcategoria?.nombre || '';
+    const nameCat = subcategoria ? `${categoria} - ${subcategoria}` : categoria;
+
+    return (
+      <TouchableOpacity
+        style={[styles.card, { borderLeftColor: isWtyActive ? "#16a34a" : "#ef4444" }]}
+        activeOpacity={0.7}
+        onPress={() => router.push({
+          pathname: "/(flows)/detalle-servicio" as never,
+          params: { idServicio: String(item.id_servicio) },
+        })}
+      >
+        <View style={styles.cardHeader}>
+          <View style={styles.dateRow}>
+            <Ionicons name="shield-checkmark" size={16} color={isWtyActive ? "#16a34a" : "#ef4444"} />
+            <Text style={[styles.dateText, { color: isWtyActive ? "#16a34a" : "#ef4444" }]}>
+              {isWtyActive ? "Garantía Activa" : "Expirada"}
+            </Text>
+          </View>
+          {isWtyActive && diffDays <= 5 && diffDays > 0 && (
+            <View style={[styles.badge, { backgroundColor: "#fef2f2" }]}>
+              <Text style={[styles.badgeText, { color: "#ef4444" }]}>
+                {diffDays} días rest.
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <Text style={styles.categoria}>{nameCat}</Text>
+        
+        <View style={styles.valorRow}>
+          <Text style={styles.valorLabel}>Vence en:</Text>
+          <Text style={[styles.valorText, !isWtyActive && { color: "#ef4444" }]}>
+            {formatFecha(item.fecha_expiracion)}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   const emptyMsg =
-    modo === "activas"
+    modo === "garantias"
+      ? "No tienes garantías registradas"
+      : modo === "activas"
       ? "No tienes solicitudes activas"
       : "No tienes solicitudes en el historial";
 
@@ -328,6 +416,27 @@ export default function ClientScheduleScreen() {
             Historial
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.modoBtn,
+            modo === "garantias" && styles.modoBtnActiveGray,
+          ]}
+          onPress={() => handleModoChange("garantias")}
+        >
+          <Ionicons
+            name="shield-checkmark"
+            size={16}
+            color={modo === "garantias" ? "#fff" : "#6b7280"}
+          />
+          <Text
+            style={[
+              styles.modoText,
+              modo === "garantias" && styles.modoTextActive,
+            ]}
+          >
+            Garantías
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* Filter chips */}
@@ -357,16 +466,20 @@ export default function ClientScheduleScreen() {
         <View style={styles.center}>
           <ActivityIndicator size="large" color="#407ee3" />
         </View>
-      ) : solicitudes.length === 0 ? (
+      ) : (modo === "garantias" ? garantias : solicitudes).length === 0 ? (
         <View style={styles.center}>
           <Ionicons name="document-text-outline" size={56} color="#d1d5db" />
           <Text style={styles.emptyText}>{emptyMsg}</Text>
         </View>
       ) : (
         <FlatList
-          data={solicitudes}
-          keyExtractor={(item) => String(item.id_solicitud)}
-          renderItem={renderSolicitud}
+          data={modo === "garantias" ? (garantias as any[]) : (solicitudes as any[])}
+          keyExtractor={(item) => String(item.id_solicitud || item.id_garantia)}
+          renderItem={(props) =>
+            modo === "garantias"
+              ? renderGarantia({ item: props.item as GarantiaItem })
+              : renderSolicitud({ item: props.item as SolicitudCliente })
+          }
           contentContainerStyle={styles.list}
           refreshControl={
             <RefreshControl

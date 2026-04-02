@@ -95,14 +95,12 @@ export default function TechnicianLayout() {
 
     (async () => {
       try {
-        // Forzar disponible = false al montar (el técnico activa manualmente)
-        try {
-          await updateDisponibilidad(false);
-        } catch {
-          // Si falla el PUT, igual continuamos con la rehidratación
-        }
-        if (cancelled) return;
-
+        // Solo LEER el estado real del backend — NO forzar inactivo.
+        // El estado disponible solo cambia por:
+        //   1. Toggle manual en home
+        //   2. Al enviar una cotización (→ inactivo)
+        //   3. Socket: cotización rechazada (→ activo)
+        //   4. Socket: cotización aceptada (→ flujo servicio)
         const estado = await getTechnicianEstadoActual();
         if (cancelled) return;
 
@@ -246,12 +244,41 @@ export default function TechnicianLayout() {
         evento: "server:nueva_solicitud",
         idSolicitud: data.id_solicitud,
       });
-      setSolicitudActiva(data);
+
+      // Extraer y aplanar los datos si el backend los envía anidados
+      let reqPayload = data;
+      if (data.solicitudData) {
+        reqPayload = {
+          ...data.solicitudData,
+          distancia_metros: data.tecnicos?.[0]?.distancia_metros ?? 0,
+        } as unknown as NuevaSolicitudPayload;
+      }
+      setSolicitudActiva(reqPayload);
     },
     onSolicitudCancelada: ({ id_solicitud }) => {
       console.log("[socket] Solicitud cancelada →", id_solicitud);
+      
+      // Caso 1: Estaba viendo el modal de nueva solicitud (aún no cotizada)
       if (solicitudActiva?.id_solicitud === id_solicitud) {
         setSolicitudActiva(null);
+      }
+
+      // Caso 2: Ya había enviado cotización y estaba esperando (disponible = false).
+      // Si la solicitud que cotizó se canceló, debe volver a estar disponible.
+      const pendiente = useTecnicoEstadoStore.getState().solicitudInmediataPendiente;
+      if (pendiente?.solicitud?.id_solicitud === id_solicitud) {
+        showError("La solicitud que cotizaste fue cancelada. Vuelves a estar disponible.");
+        updateDisponibilidad(true)
+          .then(() => updateUser({ disponible: true }))
+          .catch(() => updateUser({ disponible: true }));
+        
+        // Limpiamos la solicitud pendiente del store
+        const currentEstado = useTecnicoEstadoStore.getState();
+        setEstadoActual({
+          disponibilidad: currentEstado.disponibilidad!,
+          citasProximasAsignadas: currentEstado.citasProximasAsignadas,
+          solicitudInmediataPendiente: null,
+        });
       }
     },
   });
@@ -293,56 +320,94 @@ export default function TechnicianLayout() {
         return;
       }
 
-      getSolicitudDetalle(payload.idSolicitud)
-        .then((solicitud) => {
-          console.log("[layout] Solicitud detalle:", JSON.stringify(solicitud));
-
-          // ── INMEDIATA: ir al mapa de servicio activo ──────────
-          const coords = extraerCoordenadas(solicitud);
-
-          if (!coords) {
-            console.warn(
-              "[layout] ⚠️ No se pudieron extraer coordenadas del cliente",
-            );
-            showError("No se pudo obtener la ubicación del servicio");
-            return;
-          }
-
-          showSuccess("¡Cotización aceptada! Dirígete al cliente.");
-
+      // ── INMEDIATA: obtener ubicación del cliente y navegar al mapa ──
+      const navigateToServicio = (coords: { lat: number; lon: number }) => {
+        try {
           setServicioActivo({
             id_servicio: payload.idServicio ?? 0,
             id_solicitud: payload.idSolicitud,
             id_tecnico: payload.idTecnico ?? 0,
-            id_estado: solicitud.id_estado,
+            id_estado: 4, // ASIGNADA
             valor_total: 0,
             valor_cotizacion: 0,
             cliente_lat: coords.lat,
             cliente_lon: coords.lon,
           });
 
-          router.push({
-            pathname: "/(flows)/servicio-activo",
-            params: {
-              idSolicitud: String(payload.idSolicitud),
-              ...(payload.idServicio === null
-                ? {}
-                : { idServicio: String(payload.idServicio) }),
-            },
-          });
+          showSuccess("¡Cotización aceptada! Dirígete al cliente.");
+
+          // Pequeño delay para asegurar que el store se actualice antes de la navegación
+          setTimeout(() => {
+            router.push({
+              pathname: "/(flows)/servicio-activo",
+              params: {
+                idSolicitud: String(payload.idSolicitud),
+                ...(payload.idServicio != null
+                  ? { idServicio: String(payload.idServicio) }
+                  : {}),
+              },
+            });
+            void logRealtimeNavegacion({
+              canal: "WS",
+              evento: "server:cotizacion_aceptada",
+              pantallaDestino: "/(flows)/servicio-activo",
+              resultado: "ok",
+              idSolicitud: payload.idSolicitud,
+              idTecnico: payload.idTecnico,
+            });
+          }, 100);
+        } catch (navErr: any) {
+          console.warn("[layout] Error navegando a servicio-activo:", navErr);
           void logRealtimeNavegacion({
             canal: "WS",
             evento: "server:cotizacion_aceptada",
             pantallaDestino: "/(flows)/servicio-activo",
-            resultado: "ok",
+            resultado: "error",
             idSolicitud: payload.idSolicitud,
             idTecnico: payload.idTecnico,
+            error: navErr?.message ?? "navigation_error",
           });
-        })
-        .catch((err) => {
-          console.warn("[layout] Error al obtener solicitud:", err);
-          showError("No se pudo cargar los datos del servicio");
-        });
+        }
+      };
+
+      // Intentar extraer coords del payload WS directamente (inclusive si vienen en formato GeoJSON PostGIS)
+      const wsData = data as Record<string, any>;
+      const wsDatos = (wsData?.datos ?? wsData) as Record<string, any>;
+      const directCoords = extraerCoordenadas(wsDatos);
+      if (directCoords) {
+        navigateToServicio(directCoords);
+        return;
+      }
+
+      // Fallback: obtener coords del detalle de la solicitud (con reintento)
+      const fetchAndNavigate = async (attempt: number) => {
+        try {
+          const solicitud = await getSolicitudDetalle(payload.idSolicitud);
+          console.log("[layout] Solicitud detalle:", JSON.stringify(solicitud));
+
+          const coords = extraerCoordenadas(solicitud);
+          if (coords) {
+            navigateToServicio(coords);
+          } else if (attempt < 2) {
+            // Puede que el backend no haya propagado las coords aún — reintentar en 2s
+            console.warn("[layout] Coords no disponibles, reintentando en 2s...");
+            setTimeout(() => fetchAndNavigate(attempt + 1), 2000);
+          } else {
+            console.warn("[layout] ⚠️ No se pudieron extraer coordenadas tras reintentos");
+            showError("No se pudo obtener la ubicación del servicio");
+          }
+        } catch (err) {
+          if (attempt < 2) {
+            console.warn("[layout] Error obteniendo solicitud, reintentando...", err);
+            setTimeout(() => fetchAndNavigate(attempt + 1), 2000);
+          } else {
+            console.warn("[layout] Error al obtener solicitud tras reintentos:", err);
+            showError("No se pudo cargar los datos del servicio");
+          }
+        }
+      };
+
+      fetchAndNavigate(0);
     },
     onCotizacionRechazada: (data) => {
       console.log("[socket] ❌ Cotización rechazada →", data);
