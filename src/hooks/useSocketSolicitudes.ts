@@ -33,6 +33,18 @@ export function useSocketSolicitudes({
   const token = useAuthStore((s) => s.token);
   const socketRef = useRef<Socket | null>(null);
 
+  // Refs para callbacks — evita stale closures
+  const cbRefs = useRef({
+    onNuevaSolicitud,
+    onSolicitudCancelada,
+    onSolicitudAsignada,
+  });
+  cbRefs.current = {
+    onNuevaSolicitud,
+    onSolicitudCancelada,
+    onSolicitudAsignada,
+  };
+
   useEffect(() => {
     if (!token || !enabled) return;
 
@@ -66,7 +78,7 @@ export function useSocketSolicitudes({
         evento: "server:nueva_solicitud",
         idSolicitud: data.id_solicitud,
       });
-      onNuevaSolicitud?.(data);
+      cbRefs.current.onNuevaSolicitud?.(data);
     });
 
     socket.on(
@@ -78,7 +90,7 @@ export function useSocketSolicitudes({
           evento: "server:solicitud_cancelada",
           idSolicitud: data.id_solicitud,
         });
-        onSolicitudCancelada?.(data);
+        cbRefs.current.onSolicitudCancelada?.(data);
       },
     );
 
@@ -89,7 +101,7 @@ export function useSocketSolicitudes({
         evento: "server:solicitud_asignada",
         idSolicitud: data.id_solicitud,
       });
-      onSolicitudAsignada?.(data);
+      cbRefs.current.onSolicitudAsignada?.(data);
     });
 
     socket.on("server:error", (err: { message: string }) => {

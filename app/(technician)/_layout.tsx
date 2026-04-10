@@ -1,5 +1,6 @@
 import { SolicitudDisponibleModal } from "@/src/components/ui/SolicitudDisponibleModal";
 import { useSocketCotizaciones } from "@/src/hooks/useSocketCotizaciones";
+import { useSocketServicios } from "@/src/hooks/useSocketServicios";
 import { useSocketSolicitudes } from "@/src/hooks/useSocketSolicitudes";
 import { useToast } from "@/src/hooks/useToast";
 import {
@@ -20,7 +21,7 @@ import { extraerCoordenadas } from "@/src/utils/coordinates";
 import { normalizeCotizacionAceptada } from "@/src/utils/cotizacionAceptada";
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs, usePathname, useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, AppState, Text, TouchableOpacity, View } from "react-native";
 
 const TAB_BG = "#407ee3";
@@ -82,6 +83,8 @@ export default function TechnicianLayout() {
   const updateUser = useAuthStore((s) => s.updateUser);
   const setServicioActivo = useServicioStore((s) => s.setServicioActivo);
   const clearServicioActivo = useServicioStore((s) => s.clearServicioActivo);
+  const valorUltimoServicio = useServicioStore((s) => s.valorUltimoServicio);
+  const setValorUltimoServicio = useServicioStore((s) => s.setValorUltimoServicio);
   const setEstadoActual = useTecnicoEstadoStore((s) => s.setEstadoActual);
   const [solicitudActiva, setSolicitudActiva] =
     useState<NuevaSolicitudPayload | null>(null);
@@ -135,14 +138,22 @@ export default function TechnicianLayout() {
             // Fallback de pantalla maneja rehidratación por id_solicitud
           }
 
-          if (pathnameRef.current !== "/(flows)/servicio-activo") {
-            router.replace({
-              pathname: "/(flows)/servicio-activo",
-              params: {
-                idSolicitud: String(estado.servicio_activo.id_solicitud),
-                idServicio: String(estado.servicio_activo.id_servicio),
-              },
-            });
+          const sActivo = estado.servicio_activo;
+          if (
+            sActivo &&
+            pathnameRef.current !== "/(flows)/servicio-activo" &&
+            !pathnameRef.current.includes("servicio-activo")
+          ) {
+            console.log("[layout] Rehidratando servicio activo #", sActivo.id_servicio);
+            setTimeout(() => {
+              router.replace({
+                pathname: "/(flows)/servicio-activo",
+                params: {
+                  idSolicitud: String(sActivo.id_solicitud),
+                  idServicio: String(sActivo.id_servicio ?? 0),
+                },
+              });
+            }, 100);
           }
 
           setSolicitudActiva(null);
@@ -238,6 +249,13 @@ export default function TechnicianLayout() {
   useSocketSolicitudes({
     enabled: estadoInicialListo && disponible,
     onNuevaSolicitud: (data) => {
+      // SI YA HAY UN SERVICIO ACTIVO, IGNORAR CUALQUIER NUEVA SOLICITUD
+      // Esto evita que el técnico reciba "ruido" o modales encima del mapa de tracking.
+      if (servicioActivo) {
+        console.log("[socket] Registro de nueva solicitud IGNORED por servicio activo");
+        return;
+      }
+
       console.log("[socket] Nueva solicitud recibida →", data);
       void logRealtimeEvento({
         canal: "WS",
@@ -284,138 +302,205 @@ export default function TechnicianLayout() {
   });
 
   // ── Socket: resultado de cotizaciones enviadas ────────────────
-  useSocketCotizaciones({
-    onCotizacionAceptada: (data) => {
-      console.log("[socket] ✅ Cotización aceptada →", data);
+  const handleCotizacionAceptada = useCallback((data: any) => {
+    console.log("[socket] ✅ Cotización aceptada →", data);
 
-      const payload = normalizeCotizacionAceptada(data);
-      if (!payload) {
-        showError("No se pudo procesar la cotización aceptada");
-        return;
+    const payload = normalizeCotizacionAceptada(data);
+    if (!payload) {
+      showError("No se pudo procesar la cotización aceptada");
+      return;
+    }
+
+    if (payload.destinoLogico === "AGENDA") {
+      showSuccess("¡Cotización aceptada! Servicio agendado.");
+      try {
+        router.push("/(technician)/schedule");
+        void logRealtimeNavegacion({
+          canal: "WS",
+          evento: "server:cotizacion_aceptada",
+          pantallaDestino: "/(technician)/schedule",
+          resultado: "ok",
+          idSolicitud: payload.idSolicitud,
+          idTecnico: payload.idTecnico,
+        });
+      } catch (err: any) {
+        void logRealtimeNavegacion({
+          canal: "WS",
+          evento: "server:cotizacion_aceptada",
+          pantallaDestino: "/(technician)/schedule",
+          resultado: "error",
+          idSolicitud: payload.idSolicitud,
+          idTecnico: payload.idTecnico,
+          error: err?.message ?? "navigation_error",
+        });
       }
+      return;
+    }
 
-      if (payload.destinoLogico === "AGENDA") {
-        showSuccess("¡Cotización aceptada! Servicio agendado.");
-        try {
-          router.push("/(technician)/schedule");
-          void logRealtimeNavegacion({
-            canal: "WS",
-            evento: "server:cotizacion_aceptada",
-            pantallaDestino: "/(technician)/schedule",
-            resultado: "ok",
-            idSolicitud: payload.idSolicitud,
-            idTecnico: payload.idTecnico,
-          });
-        } catch (err: any) {
-          void logRealtimeNavegacion({
-            canal: "WS",
-            evento: "server:cotizacion_aceptada",
-            pantallaDestino: "/(technician)/schedule",
-            resultado: "error",
-            idSolicitud: payload.idSolicitud,
-            idTecnico: payload.idTecnico,
-            error: err?.message ?? "navigation_error",
-          });
+    // ── Guard: no navegar si ya estamos en servicio-activo ──
+    if (pathnameRef.current.includes("servicio-activo")) {
+      console.log("[layout] Ya en servicio-activo, ignorando navegación duplicada");
+      return;
+    }
+
+    // ── INMEDIATA: obtener ubicación del cliente y navegar al mapa ──
+    const navigateToServicio = (coords: { lat: number; lon: number }) => {
+      try {
+        // Double-check guard antes de navegar
+        if (pathnameRef.current.includes("servicio-activo")) {
+          console.log("[layout] Guard: ya en servicio-activo");
+          return;
         }
-        return;
-      }
 
-      // ── INMEDIATA: obtener ubicación del cliente y navegar al mapa ──
-      const navigateToServicio = (coords: { lat: number; lon: number }) => {
-        try {
-          setServicioActivo({
-            id_servicio: payload.idServicio ?? 0,
-            id_solicitud: payload.idSolicitud,
-            id_tecnico: payload.idTecnico ?? 0,
-            id_estado: 4, // ASIGNADA
-            valor_total: 0,
-            valor_cotizacion: 0,
-            cliente_lat: coords.lat,
-            cliente_lon: coords.lon,
+        setServicioActivo({
+          id_servicio: payload.idServicio ?? 0,
+          id_solicitud: payload.idSolicitud,
+          id_tecnico: payload.idTecnico ?? 0,
+          id_estado: 4, // ASIGNADA
+          valor_total: 0,
+          valor_cotizacion: 0,
+          cliente_lat: coords.lat,
+          cliente_lon: coords.lon,
+        });
+
+        showSuccess("¡Cotización aceptada! Dirígete al cliente.");
+
+        // Pequeño delay para asegurar que el store se actualice antes de la navegación
+        setTimeout(() => {
+          if (pathnameRef.current.includes("servicio-activo")) return;
+          
+          console.log("[layout] Navegando a servicio aceptado. IDs:", payload.idSolicitud, payload.idServicio);
+          router.replace({
+            pathname: "/(flows)/servicio-activo",
+            params: {
+              idSolicitud: String(payload.idSolicitud),
+              idServicio: String(payload.idServicio ?? 0),
+            },
           });
 
-          showSuccess("¡Cotización aceptada! Dirígete al cliente.");
-
-          // Pequeño delay para asegurar que el store se actualice antes de la navegación
-          setTimeout(() => {
-            router.push({
-              pathname: "/(flows)/servicio-activo",
-              params: {
-                idSolicitud: String(payload.idSolicitud),
-                ...(payload.idServicio != null
-                  ? { idServicio: String(payload.idServicio) }
-                  : {}),
-              },
-            });
-            void logRealtimeNavegacion({
-              canal: "WS",
-              evento: "server:cotizacion_aceptada",
-              pantallaDestino: "/(flows)/servicio-activo",
-              resultado: "ok",
-              idSolicitud: payload.idSolicitud,
-              idTecnico: payload.idTecnico,
-            });
-          }, 100);
-        } catch (navErr: any) {
-          console.warn("[layout] Error navegando a servicio-activo:", navErr);
           void logRealtimeNavegacion({
             canal: "WS",
             evento: "server:cotizacion_aceptada",
             pantallaDestino: "/(flows)/servicio-activo",
-            resultado: "error",
+            resultado: "ok",
             idSolicitud: payload.idSolicitud,
             idTecnico: payload.idTecnico,
-            error: navErr?.message ?? "navigation_error",
           });
-        }
-      };
+        }, 300);
+      } catch (navErr: any) {
+        console.warn("[layout] Error navegando a servicio-activo:", navErr);
+        void logRealtimeNavegacion({
+          canal: "WS",
+          evento: "server:cotizacion_aceptada",
+          pantallaDestino: "/(flows)/servicio-activo",
+          resultado: "error",
+          idSolicitud: payload.idSolicitud,
+          idTecnico: payload.idTecnico,
+          error: navErr?.message ?? "navigation_error",
+        });
+      }
+    };
 
-      // Intentar extraer coords del payload WS directamente (inclusive si vienen en formato GeoJSON PostGIS)
-      const wsData = data as Record<string, any>;
-      const wsDatos = (wsData?.datos ?? wsData) as Record<string, any>;
-      const directCoords = extraerCoordenadas(wsDatos);
-      if (directCoords) {
-        navigateToServicio(directCoords);
+    // Buscar coordenadas directas
+    const wsDatos = (data?.datos ?? data) as Record<string, any>;
+    const directCoords = extraerCoordenadas(wsDatos);
+    if (directCoords) {
+      navigateToServicio(directCoords);
+      return;
+    }
+
+    // Fallback: obtener coords del detalle
+    const fetchAndNavigate = async (attempt: number) => {
+      try {
+        const solicitud = await getSolicitudDetalle(payload.idSolicitud);
+        const coords = extraerCoordenadas(solicitud);
+        if (coords) {
+          navigateToServicio(coords);
+        } else if (attempt < 2) {
+          setTimeout(() => fetchAndNavigate(attempt + 1), 2000);
+        } else {
+          showError("No se pudo obtener la ubicación del servicio");
+        }
+      } catch {
+        if (attempt < 2) {
+          setTimeout(() => fetchAndNavigate(attempt + 1), 2000);
+        } else {
+          showError("No se pudo cargar los datos del servicio");
+        }
+      }
+    };
+
+    fetchAndNavigate(0);
+  }, [showError, showSuccess, setServicioActivo]);
+
+  const handleCotizacionRechazada = useCallback((data: any) => {
+    console.log("[socket] ❌ Cotización rechazada →", data);
+    showError("Tu cotización fue rechazada. Vuelves a estar disponible.");
+    updateDisponibilidad(true)
+      .then(() => updateUser({ disponible: true }))
+      .catch(() => updateUser({ disponible: true }));
+  }, [showError, updateUser]);
+
+  useSocketCotizaciones({
+    onCotizacionAceptada: handleCotizacionAceptada,
+    onCotizacionRechazada: handleCotizacionRechazada,
+  });
+
+  // ── Socket: lifecycle del servicio (CENTRALIZADO) ───────────────
+  // Estos eventos se escuchan aquí en lugar de en servicio-activo.tsx
+  // para evitar sockets duplicados que causan crashes y doble procesamiento.
+  useSocketServicios({
+    onPagoConfirmado: (data) => {
+      console.log("[socket] 💰 Pago confirmado recibido:", data.id_servicio);
+
+      // BLINDAJE: Solo cerrar si el ID coincide con el servicio que el técnico TIENE ABIERTO.
+      if (servicioActivo && data.id_servicio !== servicioActivo.id_servicio) {
+        console.log("[socket] Ignorando PagoConfirmado de un servicio diferente/viejo");
         return;
       }
 
-      // Fallback: obtener coords del detalle de la solicitud (con reintento)
-      const fetchAndNavigate = async (attempt: number) => {
-        try {
-          const solicitud = await getSolicitudDetalle(payload.idSolicitud);
-          console.log("[layout] Solicitud detalle:", JSON.stringify(solicitud));
+      // Desglose: total ingresado por el técnico, comisión y ganancia neta del socket
+      const total = valorUltimoServicio;
+      const montoTecnico = data.monto_tecnico;
+      let msg: string;
+      if (total != null && montoTecnico > 0) {
+        const comision = total - montoTecnico;
+        msg =
+          `¡Pago confirmado! Cliente pagó $${total.toLocaleString("es-CO")}. ` +
+          `Plataforma: $${comision.toLocaleString("es-CO")} (15%). ` +
+          `Tu ganancia: $${montoTecnico.toLocaleString("es-CO")} (85%)`;
+      } else if (montoTecnico > 0) {
+        msg = `¡Pago confirmado! Recibes $${montoTecnico.toLocaleString("es-CO")}`;
+      } else {
+        msg = "El cliente confirmó el pago. ¡Servicio completado!";
+      }
 
-          const coords = extraerCoordenadas(solicitud);
-          if (coords) {
-            navigateToServicio(coords);
-          } else if (attempt < 2) {
-            // Puede que el backend no haya propagado las coords aún — reintentar en 2s
-            console.warn("[layout] Coords no disponibles, reintentando en 2s...");
-            setTimeout(() => fetchAndNavigate(attempt + 1), 2000);
-          } else {
-            console.warn("[layout] ⚠️ No se pudieron extraer coordenadas tras reintentos");
-            showError("No se pudo obtener la ubicación del servicio");
-          }
-        } catch (err) {
-          if (attempt < 2) {
-            console.warn("[layout] Error obteniendo solicitud, reintentando...", err);
-            setTimeout(() => fetchAndNavigate(attempt + 1), 2000);
-          } else {
-            console.warn("[layout] Error al obtener solicitud tras reintentos:", err);
-            showError("No se pudo cargar los datos del servicio");
-          }
-        }
-      };
-
-      fetchAndNavigate(0);
+      showSuccess(msg);
+      setValorUltimoServicio(null);
+      clearServicioActivo();
+      setTimeout(() => {
+        router.replace({
+          pathname: "/(technician)/schedule",
+          params: { modo: "garantias" },
+        });
+      }, 1200);
     },
-    onCotizacionRechazada: (data) => {
-      console.log("[socket] ❌ Cotización rechazada →", data);
-      showError("Tu cotización fue rechazada. Vuelves a estar disponible.");
-      // Reactivar disponibilidad — el técnico ya no está esperando respuesta
-      updateDisponibilidad(true)
-        .then(() => updateUser({ disponible: true }))
-        .catch(() => updateUser({ disponible: true }));
+    onCalificacionRecibida: (data) => {
+      console.log("[socket] ⭐ Calificación recibida:", data.id_servicio, "score:", data.puntuacion);
+
+      if (servicioActivo && data.id_servicio !== servicioActivo.id_servicio) {
+        console.log("[socket] Ignorando CalificacionRecibida de un servicio diferente/viejo");
+        return;
+      }
+
+      showSuccess(`¡Calificación recibida: ${data.puntuacion}⭐!`);
+      clearServicioActivo();
+      setTimeout(() => {
+        router.replace({
+          pathname: "/(technician)/schedule",
+          params: { modo: "garantias" },
+        });
+      }, 1500);
     },
   });
 

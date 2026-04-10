@@ -43,6 +43,20 @@ export default function TecnicoSolicitudScreen() {
   const [descripcion, setDescripcion] = useState("");
   const [tiempoEstimado, setTiempoEstimado] = useState("");
 
+  // ── Errores inline del formulario de cotización ─────────────
+  const [valorError, setValorError] = useState("");
+  const [descripcionError, setDescripcionError] = useState("");
+  const [tiempoError, setTiempoError] = useState("");
+
+  const resetCotizacionForm = () => {
+    setValor("");
+    setDescripcion("");
+    setTiempoEstimado("");
+    setValorError("");
+    setDescripcionError("");
+    setTiempoError("");
+  };
+
   useEffect(() => {
     if (!id) return;
     getSolicitudDetalle(Number(id))
@@ -55,18 +69,46 @@ export default function TecnicoSolicitudScreen() {
   };
 
   const handleEnviarCotizacion = async () => {
-    if (!id || !valor) {
-      showError("Ingresa el valor de la cotización");
-      return;
+    // ── Validación campo por campo ───────────────────────────────
+    let hasError = false;
+
+    const montoNum = Number(valor.trim().replace(/,/g, "."));
+    if (!valor.trim()) {
+      setValorError("El valor de la cotización es obligatorio");
+      hasError = true;
+    } else if (Number.isNaN(montoNum) || montoNum <= 0) {
+      setValorError("Ingresa un valor numérico mayor a 0");
+      hasError = true;
+    } else {
+      setValorError("");
     }
+
+    if (descripcion.trim() && descripcion.trim().length < 10) {
+      setDescripcionError("La descripción debe tener al menos 10 caracteres");
+      hasError = true;
+    } else if (descripcion.trim().length > 500) {
+      setDescripcionError("Máximo 500 caracteres");
+      hasError = true;
+    } else {
+      setDescripcionError("");
+    }
+
+    if (tiempoEstimado.trim() && tiempoEstimado.trim().length < 2) {
+      setTiempoError("Ingresa un tiempo válido (ej: 2 horas)");
+      hasError = true;
+    } else {
+      setTiempoError("");
+    }
+
+    if (hasError || !id) return;
 
     setSending(true);
     try {
       await crearCotizacion({
         id_solicitud: Number(id),
-        valor_cotizacion: Number(valor),
-        descripcion: descripcion || "Servicio técnico",
-        tiempo_estimado: tiempoEstimado || "Por definir",
+        valor_cotizacion: montoNum,
+        descripcion: descripcion.trim() || "Servicio técnico",
+        tiempo_estimado: tiempoEstimado.trim() || "Por definir",
         dias_garantia: 30,
       });
 
@@ -274,7 +316,7 @@ export default function TecnicoSolicitudScreen() {
       <Modal visible={cotizacionVisible} transparent animationType="fade">
         <Pressable
           style={styles.modalBackdrop}
-          onPress={() => setCotizacionVisible(false)}
+          onPress={() => { setCotizacionVisible(false); resetCotizacionForm(); }}
         >
           <Pressable style={styles.modalCard} onPress={() => {}}>
             <Text style={styles.modalTitle}>
@@ -282,41 +324,51 @@ export default function TecnicoSolicitudScreen() {
             </Text>
 
             <View style={styles.fieldWrapper}>
-              <Text style={styles.inputLabel}>Valor cotización</Text>
+              <Text style={styles.inputLabel}>Valor cotización *</Text>
               <TextInput
                 value={valor}
-                onChangeText={setValor}
+                onChangeText={(t) => { setValor(t); if (valorError) setValorError(""); }}
                 keyboardType="decimal-pad"
                 placeholder="Ej: 80000"
                 placeholderTextColor="#4b5563"
-                style={styles.input}
+                style={[styles.input, valorError ? styles.inputError : null]}
               />
+              {valorError ? <Text style={styles.fieldError}>{valorError}</Text> : null}
             </View>
 
             <View style={styles.fieldWrapper}>
               <Text style={styles.inputLabel}>Descripción del trabajo</Text>
               <TextInput
                 value={descripcion}
-                onChangeText={setDescripcion}
+                onChangeText={(t) => { setDescripcion(t); if (descripcionError) setDescripcionError(""); }}
                 placeholder="Ej: Revisaré con llave inglesa, cambiaré el empaque y verificaré que no haya fugas"
                 placeholderTextColor="#4b5563"
                 style={[
                   styles.input,
                   { height: 80, textAlignVertical: "top", paddingTop: 12 },
+                  descripcionError ? styles.inputError : null,
                 ]}
                 multiline
+                maxLength={500}
               />
+              <View style={styles.fieldFooter}>
+                {descripcionError
+                  ? <Text style={styles.fieldError}>{descripcionError}</Text>
+                  : <Text />}
+                <Text style={styles.charCount}>{descripcion.length}/500</Text>
+              </View>
             </View>
 
             <View style={styles.fieldWrapper}>
               <Text style={styles.inputLabel}>Tiempo estimado</Text>
               <TextInput
                 value={tiempoEstimado}
-                onChangeText={setTiempoEstimado}
+                onChangeText={(t) => { setTiempoEstimado(t); if (tiempoError) setTiempoError(""); }}
                 placeholder="Ej: 2 horas"
                 placeholderTextColor="#4b5563"
-                style={styles.input}
+                style={[styles.input, tiempoError ? styles.inputError : null]}
               />
+              {tiempoError ? <Text style={styles.fieldError}>{tiempoError}</Text> : null}
             </View>
 
             <TouchableOpacity
@@ -341,7 +393,7 @@ export default function TecnicoSolicitudScreen() {
 
             <TouchableOpacity
               style={styles.cancelarBtn}
-              onPress={() => setCotizacionVisible(false)}
+              onPress={() => { setCotizacionVisible(false); resetCotizacionForm(); }}
               activeOpacity={0.8}
             >
               <Text style={styles.cancelarText}>Cancelar</Text>
@@ -504,4 +556,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   cancelarText: { color: "#cc2d2d", fontSize: 15, fontWeight: "600" },
+
+  inputError: { borderColor: "#ef4444" },
+  fieldError: { color: "#ef4444", fontSize: 12, marginTop: 2 },
+  fieldFooter: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  charCount: { fontSize: 11, color: "#9ca3af", textAlign: "right" },
 });

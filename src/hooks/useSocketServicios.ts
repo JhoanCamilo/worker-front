@@ -27,6 +27,9 @@ interface Options {
  *
  * El servidor une automáticamente al usuario a sus rooms personales
  * (user:{id} y tecnico:{id}) — no hay eventos join necesarios.
+ *
+ * Usa refs para los callbacks para evitar re-crear el socket cuando
+ * los callbacks cambian (stale closure fix — igual que useSocketCotizaciones).
  */
 export function useSocketServicios({
   onServicioIniciado,
@@ -36,6 +39,20 @@ export function useSocketServicios({
 }: Options = {}) {
   const token = useAuthStore((s) => s.token);
   const socketRef = useRef<Socket | null>(null);
+
+  // Refs para callbacks — evita stale closures y reconexiones innecesarias
+  const cbRefs = useRef({
+    onServicioIniciado,
+    onServicioFinalizado,
+    onPagoConfirmado,
+    onCalificacionRecibida,
+  });
+  cbRefs.current = {
+    onServicioIniciado,
+    onServicioFinalizado,
+    onPagoConfirmado,
+    onCalificacionRecibida,
+  };
 
   useEffect(() => {
     if (!token) return;
@@ -50,7 +67,7 @@ export function useSocketServicios({
         idSolicitud: data.id_solicitud,
         idTecnico: data.id_tecnico,
       });
-      onServicioIniciado?.(data);
+      cbRefs.current.onServicioIniciado?.(data);
     });
 
     socket.on("server:servicio_finalizado", (data: ServicioPayload) => {
@@ -60,7 +77,7 @@ export function useSocketServicios({
         idSolicitud: data.id_solicitud,
         idTecnico: data.id_tecnico,
       });
-      onServicioFinalizado?.(data);
+      cbRefs.current.onServicioFinalizado?.(data);
     });
 
     socket.on("server:pago_confirmado", (data: PagoConfirmadoPayload) => {
@@ -70,7 +87,7 @@ export function useSocketServicios({
         idSolicitud: data.id_solicitud,
         idTecnico: data.id_tecnico,
       });
-      onPagoConfirmado?.(data);
+      cbRefs.current.onPagoConfirmado?.(data);
     });
 
     socket.on("server:calificacion_recibida", (data: CalificacionPayload) => {
@@ -78,7 +95,7 @@ export function useSocketServicios({
         canal: "WS",
         evento: "server:calificacion_recibida",
       });
-      onCalificacionRecibida?.(data);
+      cbRefs.current.onCalificacionRecibida?.(data);
     });
 
     socket.on("server:error", (err: { message: string }) => {

@@ -6,15 +6,14 @@ export interface GarantiaItem {
   tiempo_validez: string;
   fecha_expiracion: string;
   createdAt: string;
-  Servicio?: {
-    id_solicitud: number;
-    valor_total: number;
-    Solicitud?: {
-      descripcion: string;
-      subcategoria?: {
-        nombre: string;
-        Categorium?: { nombre: string };
-      };
+  servicio?: {
+    fecha_servicio?: string;
+    subcategoria?: { nombre: string };
+    tecnico?: {
+      datos_usuario?: { nombre: string; apellido: string };
+    };
+    cliente?: {
+      datos_usuario?: { nombre: string; apellido: string };
     };
   };
 }
@@ -27,6 +26,17 @@ export interface GarantiaResponse {
   garantias: GarantiaItem[];
 }
 
+function normalizeGarantiaResponse(data: any): GarantiaResponse {
+  const items: GarantiaItem[] = Array.isArray(data.data) ? data.data : [];
+  return {
+    garantias:    items,
+    total:        data.total        ?? items.length,
+    total_paginas: data.total_paginas ?? 1,
+    page:         data.page         ?? 1,
+    limit:        data.limit        ?? items.length,
+  };
+}
+
 export async function getGarantiasCliente(
   page = 1,
   limit = 10,
@@ -34,7 +44,7 @@ export async function getGarantiasCliente(
   const { data } = await api.get("/garantias/cliente", {
     params: { page, limit },
   });
-  return data.data;
+  return normalizeGarantiaResponse(data);
 }
 
 export async function getGarantiasTecnico(
@@ -44,7 +54,7 @@ export async function getGarantiasTecnico(
   const { data } = await api.get("/garantias/tecnico", {
     params: { page, limit },
   });
-  return data.data;
+  return normalizeGarantiaResponse(data);
 }
 
 export async function getGarantiaByServicio(
@@ -52,7 +62,7 @@ export async function getGarantiaByServicio(
 ): Promise<GarantiaItem | null> {
   try {
     const { data } = await api.get(`/garantias/servicio/${idServicio}`);
-    return data.data;
+    return data.data ?? null;
   } catch (err: any) {
     if (err?.response?.status === 404) return null;
     throw err;

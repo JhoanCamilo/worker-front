@@ -4,7 +4,7 @@ import {
 } from "@/src/services/solicitud.service";
 import { GarantiaItem, getGarantiasCliente } from "@/src/services/garantia.service";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -21,11 +21,19 @@ const TIPOS_FILTRO = ["Todas", "INMEDIATA", "PROGRAMADO"];
 
 export default function ClientScheduleScreen() {
   const router = useRouter();
+  const { modo: paramModo } = useLocalSearchParams<{ modo?: string }>();
   const [solicitudes, setSolicitudes] = useState<SolicitudCliente[]>([]);
   const [garantias, setGarantias] = useState<GarantiaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [modo, setModo] = useState<"activas" | "historial" | "garantias">("activas");
+
+  // ── Sincronizar modo desde parámetro URL ─────────────────────────
+  useEffect(() => {
+    if (paramModo === "garantias" || paramModo === "historial" || paramModo === "activas") {
+      setModo(paramModo as any);
+    }
+  }, [paramModo]);
   const [filtroTipo, setFiltroTipo] = useState("Todas");
   const [pagina, setPagina] = useState(1);
   const [totalPaginas, setTotalPaginas] = useState(1);
@@ -127,7 +135,13 @@ export default function ClientScheduleScreen() {
       return;
     }
 
-    if (["EN_PROGRESO", "EN_CAMINO", "ASIGNADA"].includes(estado) && cotizacionAceptada) {
+    const esProgramada = item.tipo_servicio === "PROGRAMADO";
+    const puedeTracking =
+      cotizacionAceptada &&
+      (["EN_PROGRESO", "EN_CAMINO"].includes(estado) ||
+        (estado === "ASIGNADA" && !esProgramada));
+
+    if (puedeTracking) {
       router.push({
         pathname: "/(flows)/tracking-cliente",
         params: {
@@ -322,9 +336,7 @@ export default function ClientScheduleScreen() {
     const isWtyActive = expires > now;
     const diffDays = Math.ceil((expires.getTime() - now.getTime()) / (1000 * 3600 * 24));
     
-    const categoria = item.Servicio?.Solicitud?.subcategoria?.Categorium?.nombre || 'Servicio';
-    const subcategoria = item.Servicio?.Solicitud?.subcategoria?.nombre || '';
-    const nameCat = subcategoria ? `${categoria} - ${subcategoria}` : categoria;
+    const nameCat = item.servicio?.subcategoria?.nombre || "Servicio";
 
     return (
       <TouchableOpacity
@@ -480,6 +492,16 @@ export default function ClientScheduleScreen() {
               ? renderGarantia({ item: props.item as GarantiaItem })
               : renderSolicitud({ item: props.item as SolicitudCliente })
           }
+          ListHeaderComponent={
+            modo === "garantias" ? (
+              <View style={styles.garantiasInfoBox}>
+                <Ionicons name="information-circle-outline" size={18} color="#6b7280" />
+                <Text style={styles.garantiasInfoText}>
+                  Aquí se muestran los servicios que contrataste y que cuentan con garantía vigente. La garantía cubre un retrabajo del mismo problema original, no nuevos servicios.
+                </Text>
+              </View>
+            ) : null
+          }
           contentContainerStyle={styles.list}
           refreshControl={
             <RefreshControl
@@ -547,6 +569,24 @@ const styles = StyleSheet.create({
 
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   emptyText: { fontSize: 15, color: "#9ca3af", marginTop: 12 },
+
+  garantiasInfoBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    backgroundColor: "#f9fafb",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+  },
+  garantiasInfoText: {
+    flex: 1,
+    fontSize: 12,
+    color: "#6b7280",
+    lineHeight: 18,
+  },
 
   list: { paddingHorizontal: 12, paddingBottom: 16 },
 

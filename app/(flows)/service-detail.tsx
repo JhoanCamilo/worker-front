@@ -37,8 +37,8 @@ export default function ServiceDetailScreen() {
   const [useLocation, setUseLocation] = useState(false);
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
-  const [addressError, setAddressError] = useState(false);
-  const [descriptionError, setDescriptionError] = useState(false);
+  const [addressError, setAddressError] = useState("");
+  const [descriptionError, setDescriptionError] = useState("");
 
   // ── Agendamiento ──────────────────────────────────────────────
   const [scheduledDate, setScheduledDate] = useState<Date | null>(null);
@@ -186,12 +186,23 @@ export default function ServiceDetailScreen() {
     let hasError = false;
 
     if (!address.trim() && !useLocation) {
-      setAddressError(true);
+      setAddressError("Debes ingresar una dirección o usar tu ubicación");
       hasError = true;
+    } else if (!useLocation && address.trim().length < 5) {
+      setAddressError("La dirección debe tener al menos 5 caracteres");
+      hasError = true;
+    } else {
+      setAddressError("");
     }
+
     if (!description.trim()) {
-      setDescriptionError(true);
+      setDescriptionError("La descripción es obligatoria");
       hasError = true;
+    } else if (description.trim().length < 10) {
+      setDescriptionError("La descripción debe tener al menos 10 caracteres");
+      hasError = true;
+    } else {
+      setDescriptionError("");
     }
     if (esProgramada && !scheduledDate) {
       setDateError(true);
@@ -296,13 +307,13 @@ export default function ServiceDetailScreen() {
           <Text style={styles.label}>¿Dónde necesitas el servicio? <Text style={styles.required}>*</Text></Text>
           <TextInput
             value={address}
-            onChangeText={(t) => { setAddress(t); setAddressError(false); }}
+            onChangeText={(t) => { setAddress(t); if (addressError) setAddressError(""); }}
             placeholder="Ej: Calle 5 #23-45, Barrio San Fernando"
             placeholderTextColor="#4b5563"
             style={[styles.input, addressError && styles.inputError]}
           />
-          {addressError && (
-            <Text style={styles.errorText}>Debes ingresar una dirección o usar tu ubicación</Text>
+          {!!addressError && (
+            <Text style={styles.errorText}>{addressError}</Text>
           )}
 
           {/* Checkbox ubicación — debajo del campo de dirección */}
@@ -340,15 +351,15 @@ export default function ServiceDetailScreen() {
           </Text>
           <TextInput
             value={description}
-            onChangeText={(t) => { setDescription(t.slice(0, 250)); setDescriptionError(false); }}
+            onChangeText={(t) => { setDescription(t.slice(0, 250)); if (descriptionError) setDescriptionError(""); }}
             placeholder="Ej: Se dañó la tubería del lavamanos y gotea"
             placeholderTextColor="#4b5563"
             multiline
             textAlignVertical="top"
             style={[styles.textarea, descriptionError && styles.inputError]}
           />
-          {descriptionError && (
-            <Text style={styles.errorText}>La descripción es obligatoria</Text>
+          {!!descriptionError && (
+            <Text style={styles.errorText}>{descriptionError}</Text>
           )}
           <Text style={styles.charCount}>{description.length}/250</Text>
         </View>

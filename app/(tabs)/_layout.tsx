@@ -2,9 +2,11 @@ import { useSocketServicios } from "@/src/hooks/useSocketServicios";
 import { useToast } from "@/src/hooks/useToast";
 import { useNotificacionStore } from "@/src/store/notificacion.store";
 import { useAuthStore } from "@/src/store/auth.store";
+import { useServicioStore } from "@/src/store/servicio.store";
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs, useRouter } from "expo-router";
-import { Text, TouchableOpacity, View } from "react-native";
+import { Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useState } from "react";
 
 const TAB_BG = "#407ee3";
 const ACTIVE = "#f2c70f";
@@ -59,24 +61,43 @@ function NotificationBell() {
 export default function TabsLayout() {
   const router = useRouter();
   const { success: showSuccess } = useToast();
+  const navigatingToCalificar = useServicioStore((s) => s.navigatingToCalificar);
+
+  const [completionModal, setCompletionModal] = useState<{
+    visible: boolean;
+    idServicio: number;
+    valorTotal: number;
+  }>({ visible: false, idServicio: 0, valorTotal: 0 });
 
   // ── Socket: recibir eventos del servicio (finalización, etc.) ──
+  // Si el cliente ya está siendo dirigido desde tracking-cliente, omitir el modal
   useSocketServicios({
     onServicioFinalizado: (data) => {
       console.log("[client/layout] Servicio finalizado →", data);
-      showSuccess("¡El servicio ha finalizado! Califica al técnico.");
-      router.push({
-        pathname: "/(flows)/calificar",
-        params: {
-          idServicio: String(data.id_servicio),
-          valorTotal: String(data.valor_total ?? 0),
-        },
+      if (navigatingToCalificar) return;
+      setCompletionModal({
+        visible: true,
+        idServicio: data.id_servicio,
+        valorTotal: data.valor_total || (data as any).datos?.valor_total || 0,
       });
     },
   });
 
+  const handleGoToCalificar = () => {
+    const { idServicio, valorTotal } = completionModal;
+    setCompletionModal({ ...completionModal, visible: false });
+    router.push({
+      pathname: "/(flows)/calificar",
+      params: {
+        idServicio: String(idServicio),
+        valorTotal: String(valorTotal),
+      },
+    });
+  };
+
   return (
-    <Tabs
+    <>
+      <Tabs
       screenOptions={({ route }) => ({
         headerShown: true,
         headerStyle: {
@@ -142,5 +163,90 @@ export default function TabsLayout() {
         }}
       />
     </Tabs>
+
+      {/* ── Modal de Finalización de Servicio ── */}
+      <Modal
+        visible={completionModal.visible}
+        transparent
+        animationType="fade"
+      >
+        <View style={layoutStyles.modalOverlay}>
+          <View style={layoutStyles.modalContainer}>
+            <View style={layoutStyles.iconCircle}>
+              <Ionicons name="checkmark-done-circle" size={50} color="#10b981" />
+            </View>
+            <Text style={layoutStyles.modalTitle}>¡Servicio Finalizado!</Text>
+            <Text style={layoutStyles.modalText}>
+              El técnico ha marcado el servicio como completado. Por favor confirma el pago y califica tu experiencia.
+            </Text>
+            
+            <TouchableOpacity 
+              style={layoutStyles.confirmBtn}
+              onPress={handleGoToCalificar}
+            >
+              <Text style={layoutStyles.confirmBtnText}>Ver detalles y calificar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }
+
+const layoutStyles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  modalContainer: {
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 24,
+    width: "100%",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  iconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "#ecfdf5",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1f2937",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  modalText: {
+    fontSize: 15,
+    color: "#6b7280",
+    textAlign: "center",
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  confirmBtn: {
+    backgroundColor: "#407ee3",
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    width: "100%",
+    alignItems: "center",
+  },
+  confirmBtnText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+});

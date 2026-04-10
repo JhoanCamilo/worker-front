@@ -87,7 +87,7 @@ export default function TechnicianHomeScreen() {
             style={[styles.pendingCta, { borderColor: "#10b981", backgroundColor: "#ecfdf5" }]}
             activeOpacity={0.85}
             onPress={() =>
-              router.push({
+              router.replace({
                 pathname: "/(flows)/servicio-activo",
                 params: {
                   idSolicitud: String(servicioActivo.id_solicitud),

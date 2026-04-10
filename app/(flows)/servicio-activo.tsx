@@ -1,4 +1,3 @@
-import { useSocketServicios } from "@/src/hooks/useSocketServicios";
 import { useSocketTracking } from "@/src/hooks/useSocketTracking";
 import { useToast } from "@/src/hooks/useToast";
 import {
@@ -24,7 +23,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
-import MapView, { Marker } from "react-native-maps";
+import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 
 // ── Error Boundary para prevenir crash nativo al renderizar el mapa ──
 class MapErrorBoundary extends Component<
@@ -77,9 +76,15 @@ export default function ServicioActivoScreen() {
   // Los permisos de ubicación ya se solicitan al inicio desde _layout.tsx
   const [appIsActive, setAppIsActive] = useState(AppState.currentState === "active");
 
+  // ── Flag para evitar re-ejecutar rehidratación ──────────────────
+  const hasRehydratedRef = useRef(false);
+
+
+
   const servicioActivo = useServicioStore((s) => s.servicioActivo);
   const setServicioActivo = useServicioStore((s) => s.setServicioActivo);
   const clearServicioActivo = useServicioStore((s) => s.clearServicioActivo);
+  const setValorUltimoServicio = useServicioStore((s) => s.setValorUltimoServicio);
 
   const idSolicitudNum = Number(idSolicitud);
   const idServicioNum = idServicioParam ? Number(idServicioParam) : null;
@@ -96,14 +101,19 @@ export default function ServicioActivoScreen() {
     };
   }, []);
 
-  // Fallback: al abrir desde push o app recien iniciada puede no existir estado en memoria.
+  // ── Rehidratación: cargar datos si no hay servicioActivo en el store ──
+  // Usa un ref flag para ejecutarse SOLO UNA VEZ y evitar loops infinitos.
   useEffect(() => {
-    if (servicioActivo && fase !== servicioActivo.fase_tracking && servicioActivo.fase_tracking) {
+    // Sincronizar fase si ya existe en el store
+    if (servicioActivo?.fase_tracking && servicioActivo.fase_tracking !== fase) {
       setFase(servicioActivo.fase_tracking as Fase);
     }
-    if (servicioActivo) return;
+
+    // Si ya existe servicioActivo en el store o ya rehidratamos, no hacer nada
+    if (servicioActivo || hasRehydratedRef.current) return;
     if (!Number.isFinite(idSolicitudNum)) return;
 
+    hasRehydratedRef.current = true;
     let cancelled = false;
 
     getSolicitudDetalle(idSolicitudNum)
@@ -127,13 +137,18 @@ export default function ServicioActivoScreen() {
           setIdServicio(recoveredIdServicio);
         }
 
+        let recoveredValorCotiz = 0;
+        if (solicitud.servicios_generados?.length) {
+          recoveredValorCotiz = Number(solicitud.servicios_generados[0].valor_total) || 0;
+        }
+
         setServicioActivo({
           id_servicio: recoveredIdServicio,
           id_solicitud: idSolicitudNum,
           id_tecnico: 0,
           id_estado: solicitud.id_estado,
           valor_total: 0,
-          valor_cotizacion: 0,
+          valor_cotizacion: recoveredValorCotiz, // <--- Recuperado de la DB
           cliente_lat: coords.lat,
           cliente_lon: coords.lon,
         });
@@ -147,19 +162,25 @@ export default function ServicioActivoScreen() {
     return () => {
       cancelled = true;
     };
-  }, [
-    idServicioNum,
-    idSolicitudNum,
-    servicioActivo,
-    setServicioActivo,
-    showError,
-  ]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idServicioNum, idSolicitudNum]);
+
+  // ── Determinar si las coordenadas son válidas para activar tracking y mapa ──
+  const coordsValidas = Boolean(
+    servicioActivo?.cliente_lat &&
+    servicioActivo?.cliente_lon &&
+    !Number.isNaN(servicioActivo.cliente_lat) &&
+    !Number.isNaN(servicioActivo.cliente_lon) &&
+    !(servicioActivo.cliente_lat === 0 && servicioActivo.cliente_lon === 0)
+  );
 
   // ── Socket: enviar GPS automáticamente (el hook detecta rol TECH) ──
-  // Habilita el tracking SOLAMENTE si estamos activos. El expo watchPosition crashea en back.
+  // SOLO se activa cuando tenemos coordenadas válidas Y la app está activa.
+  // Esto previene race conditions donde el tracking inicia antes de que
+  // los datos del store estén listos.
   useSocketTracking({
     idSolicitud: Number(idSolicitud),
-    enabled: appIsActive,
+    enabled: appIsActive && coordsValidas,
     onTecnicoLlego: () => {
       if (fase === "EN_CAMINO") {
         setFase("LLEGO");
@@ -168,30 +189,30 @@ export default function ServicioActivoScreen() {
     },
   });
 
+  // ── Ajustar mapa para ver el destino del cliente ──
+  useEffect(() => {
+    if (mapRef.current && coordsValidas) {
+      mapRef.current.animateToRegion({
+        latitude: Number(servicioActivo!.cliente_lat),
+        longitude: Number(servicioActivo!.cliente_lon),
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      }, 1000);
+    }
+  }, [coordsValidas, servicioActivo]);
+
   // ── Sincronizar Fase en Store para recuperación ─────────────────
   useEffect(() => {
-    if (servicioActivo) {
+    const currentStoreFase = useServicioStore.getState().servicioActivo?.fase_tracking;
+    if (servicioActivo && currentStoreFase !== fase) {
       useServicioStore.getState().updateFaseTracking(fase);
     }
-  }, [fase, servicioActivo]);
+  }, [fase]);
 
-  // ── Socket: lifecycle del servicio ──────────────────────────────
-  useSocketServicios({
-    onPagoConfirmado: () => {
-      showSuccess("Pago confirmado. Servicio cerrado correctamente");
-      clearServicioActivo();
-      setTimeout(() => {
-        router.replace("/(technician)/home");
-      }, 1200);
-    },
-    onCalificacionRecibida: (data) => {
-      showSuccess(`¡Calificación recibida: ${data.puntuacion}⭐!`);
-      clearServicioActivo();
-      setTimeout(() => {
-        router.replace("/(technician)/home");
-      }, 1500);
-    },
-  });
+  // ── NOTA: useSocketServicios se ELIMINÓ de aquí ─────────────────
+  // Los eventos onPagoConfirmado y onCalificacionRecibida se manejan
+  // centralizadamente en (technician)/_layout.tsx para evitar
+  // sockets duplicados que causan crashes y doble procesamiento.
 
   // ── Countdown de 5 minutos después de llegar ───────────────────
   useEffect(() => {
@@ -242,7 +263,18 @@ export default function ServicioActivoScreen() {
     setActionLoading(true);
     try {
       const resp = await iniciarServicio(Number(idSolicitud));
-      setIdServicio(resp.id_servicio);
+      const realIdServicio = resp.id_servicio;
+      
+      setIdServicio(realIdServicio);
+      // Sincronizar el store global para que si la app se recarga, ya tenga el id_servicio real
+      if (servicioActivo) {
+        setServicioActivo({ 
+          ...servicioActivo, 
+          id_servicio: realIdServicio,
+          id_estado: 5 // EN_PROCESO
+        });
+      }
+      
       setFase("EN_SERVICIO");
       showSuccess("Servicio iniciado correctamente");
     } catch (err: any) {
@@ -306,10 +338,21 @@ export default function ServicioActivoScreen() {
     setShowPaymentModal(false);
     setActionLoading(true);
     try {
-      await finalizarServicio(idServicio, {
+      const resp = await finalizarServicio(idServicio, {
         id_medioPago: MEDIO_PAGO_EFECTIVO,
         valor_total: monto,
       });
+
+      // Si el backend ya lo marcó como completado (6) o finalizado (7+)
+      if (resp.id_estado >= 6) {
+        showSuccess("Servicio finalizado con éxito.");
+        setValorUltimoServicio(monto);
+        clearServicioActivo();
+        router.replace("/(technician)/home");
+        return;
+      }
+
+      setValorUltimoServicio(monto);
       setFase("FINALIZADO");
       showSuccess("Servicio finalizado. Esperando confirmación del cliente...");
     } catch (err: any) {
@@ -418,13 +461,7 @@ export default function ServicioActivoScreen() {
   }
 
   // Guard: si las coordenadas son inválidas el MapView de Google crashea la app entera en Android
-  if (
-    !servicioActivo.cliente_lat ||
-    !servicioActivo.cliente_lon ||
-    Number.isNaN(servicioActivo.cliente_lat) ||
-    Number.isNaN(servicioActivo.cliente_lon) ||
-    (servicioActivo.cliente_lat === 0 && servicioActivo.cliente_lon === 0)
-  ) {
+  if (!coordsValidas) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#407ee3" />
@@ -444,47 +481,58 @@ export default function ServicioActivoScreen() {
         <View style={{ width: 36 }} />
       </View>
 
-      {/* Map — envuelto en ErrorBoundary para capturar crashes nativos */}
-      <MapErrorBoundary
-        fallback={
-          <View style={[styles.center, styles.map]}>
-            <Ionicons name="warning-outline" size={48} color="#f59e0b" />
-            <Text style={[styles.loadingText, { textAlign: "center", paddingHorizontal: 24 }]}>
-              No se pudo cargar el mapa.{"\n"}Puedes continuar con las acciones de la pantalla.
-            </Text>
-          </View>
-        }
-      >
-        {appIsActive ? (
+      {/* Map — Protegido con MapErrorBoundary y guard de coordenadas */}
+      {coordsValidas ? (
+        <MapErrorBoundary
+          fallback={
+            <View style={[styles.center, styles.map]}>
+              <MaterialIcons name="error-outline" size={48} color="#ef4444" />
+              <Text style={styles.errorText}>Error al cargar el mapa nativo</Text>
+              <TouchableOpacity
+                onPress={() => router.replace("/(technician)/home")}
+                style={styles.retryBtn}
+              >
+                <Text style={styles.retryBtnText}>Volver al inicio</Text>
+              </TouchableOpacity>
+            </View>
+          }
+        >
           <MapView
             ref={mapRef}
+            provider={PROVIDER_GOOGLE}
             style={styles.map}
+            showsUserLocation={true}
+            showsMyLocationButton={true}
+            showsCompass={true}
             initialRegion={{
-              latitude: servicioActivo.cliente_lat,
-              longitude: servicioActivo.cliente_lon,
-              latitudeDelta: 0.015,
-              longitudeDelta: 0.015,
+              latitude: Number(servicioActivo.cliente_lat),
+              longitude: Number(servicioActivo.cliente_lon),
+              latitudeDelta: 0.05,
+              longitudeDelta: 0.05,
             }}
           >
             <Marker
               coordinate={{
-                latitude: servicioActivo.cliente_lat,
-                longitude: servicioActivo.cliente_lon,
+                latitude: Number(servicioActivo.cliente_lat),
+                longitude: Number(servicioActivo.cliente_lon),
               }}
               title="Ubicación del cliente"
+              description="Destino del servicio"
             >
               <View style={styles.markerClient}>
                 <Ionicons name="home" size={20} color="#fff" />
               </View>
             </Marker>
           </MapView>
-        ) : (
-          <View style={[styles.center, styles.map]}>
-            <Ionicons name="location-outline" size={48} color="#9ca3af" />
-            <Text style={styles.loadingText}>Conectando GPS y mapa...</Text>
-          </View>
-        )}
-      </MapErrorBoundary>
+        </MapErrorBoundary>
+      ) : (
+        <View style={[styles.center, styles.map]}>
+          <ActivityIndicator size="large" color="#407ee3" />
+          <Text style={[styles.loadingText, { marginTop: 12 }]}>
+            Configurando mapa...
+          </Text>
+        </View>
+      )}
 
       {/* Status card */}
       <View style={styles.statusCard}>
@@ -615,9 +663,12 @@ export default function ServicioActivoScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+
     </View>
   );
 }
+
 
 function getFaseColor(fase: Fase): string {
   switch (fase) {
@@ -654,6 +705,15 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   loadingText: { fontSize: 14, color: "#9ca3af" },
+  errorText: { fontSize: 16, color: "#ef4444", fontWeight: "600", textAlign: "center" },
+  retryBtn: {
+    marginTop: 12,
+    backgroundColor: "#407ee3",
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+  },
+  retryBtnText: { color: "#fff", fontWeight: "700" },
 
   header: {
     backgroundColor: "#407ee3",

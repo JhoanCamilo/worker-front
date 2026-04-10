@@ -1,10 +1,10 @@
 import { crearCalificacion } from "@/src/services/calificacion.service";
-import { confirmarPagoServicio } from "@/src/services/servicio.service";
+import { confirmarPagoServicio, getServicioDetalle } from "@/src/services/servicio.service";
 import { useServicioStore } from "@/src/store/servicio.store";
 import { useToast } from "@/src/hooks/useToast";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -27,11 +27,34 @@ export default function CalificarScreen() {
   const router = useRouter();
   const { success: showSuccess, error: showError } = useToast();
   const clearServicioActivo = useServicioStore((s) => s.clearServicioActivo);
+  const setNavigatingToCalificar = useServicioStore((s) => s.setNavigatingToCalificar);
 
-  const valorTotalNum = valorTotal ? Number(valorTotal) : null;
-  const skipPayment = !valorTotalNum || valorTotalNum <= 0;
+  // Forzamos "payment" si existe idServicio, para que el cliente vea el resumen antes
+  const [screen, setScreen] = useState<Screen>(idServicio ? "payment" : "rating");
+  const [valorTotalNum, setValorTotalNum] = useState<number | null>(
+    valorTotal ? Number(valorTotal) : null
+  );
+  const [loadingPrice, setLoadingPrice] = useState(false);
 
-  const [screen, setScreen] = useState<Screen>(skipPayment ? "rating" : "payment");
+  // Resetear el flag de navegación al montar esta pantalla
+  useEffect(() => {
+    setNavigatingToCalificar(false);
+  }, []);
+
+  // ── Cargar precio si no vino en los parámetros ──────────────
+  useEffect(() => {
+    if (idServicio && valorTotalNum === null) {
+      setLoadingPrice(true);
+      getServicioDetalle(Number(idServicio))
+        .then((s) => setValorTotalNum(s.valor_total ?? 0))
+        .catch(() => setValorTotalNum(0))
+        .finally(() => setLoadingPrice(false));
+    }
+  }, [idServicio]);
+
+  // Solo saltar pago si valor es estrictamente 0 o nulo Y no estamos en flujo de cierre
+  const skipPayment = valorTotalNum !== null && valorTotalNum <= 0;
+
   const [puntuacion, setPuntuacion] = useState(0);
   const [comentario, setComentario] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -51,7 +74,7 @@ export default function CalificarScreen() {
       });
       showSuccess("¡Gracias por tu calificación!");
       clearServicioActivo();
-      router.replace("/(tabs)/home");
+      router.replace({ pathname: "/(tabs)/schedule", params: { modo: "garantias" } });
     } catch (err: any) {
       const msg =
         err?.response?.data?.message ?? "No se pudo enviar la calificación";
@@ -99,11 +122,18 @@ export default function CalificarScreen() {
         contentContainerStyle={styles.contentPadding}
       >
         {screen === "payment" ? (
-          <PaymentConfirmScreen
-            valorTotal={valorTotalNum!}
-            onConfirm={handleConfirmPay}
-            onSkip={() => setScreen("rating")}
-          />
+          loadingPrice ? (
+            <View style={styles.centerLoading}>
+              <ActivityIndicator size="large" color="#407ee3" />
+              <Text style={styles.loadingText}>Cargando información de pago...</Text>
+            </View>
+          ) : (
+            <PaymentConfirmScreen
+              valorTotal={valorTotalNum || 0}
+              onConfirm={handleConfirmPay}
+              onSkip={() => setScreen("rating")}
+            />
+          )
         ) : (
           <RatingScreen
             puntuacion={puntuacion}
@@ -112,7 +142,7 @@ export default function CalificarScreen() {
             setComentario={setComentario}
             submitting={submitting}
             onSubmit={handleSubmitRating}
-            onSkip={() => { clearServicioActivo(); router.replace("/(tabs)/home"); }}
+            onSkip={() => { clearServicioActivo(); router.replace({ pathname: "/(tabs)/schedule", params: { modo: "garantias" } }); }}
           />
         )}
       </ScrollView>
@@ -383,5 +413,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#15803d",
     lineHeight: 17,
+  },
+  centerLoading: {
+    paddingVertical: 60,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 14,
+    color: "#6b7280",
   },
 });

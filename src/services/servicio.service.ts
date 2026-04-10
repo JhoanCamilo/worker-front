@@ -25,6 +25,12 @@ export interface ServicioResponse {
     fecha_expiracion: string;
     createdAt: string;
   } | null;
+  transaccion?: {
+    id_transaccion: number;
+    id_medioPago: number;
+    valor_total: number;
+    fecha_transaccion: string;
+  } | null;
 }
 
 export interface FinalizarServicioPayload {

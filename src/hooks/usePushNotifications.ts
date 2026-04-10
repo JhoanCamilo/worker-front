@@ -277,13 +277,11 @@ export function usePushNotifications() {
           tipo,
           "/(flows)/servicio-activo",
           () => {
-            router.push({
+            router.replace({
               pathname: "/(flows)/servicio-activo",
               params: {
                 idSolicitud: String(normalized.idSolicitud),
-                ...(normalized.idServicio === null
-                  ? {}
-                  : { idServicio: String(normalized.idServicio) }),
+                idServicio: String(normalized.idServicio ?? 0),
               },
             });
           },

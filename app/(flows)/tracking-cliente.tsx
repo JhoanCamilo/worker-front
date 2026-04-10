@@ -7,7 +7,7 @@ import { getSolicitudDetalle } from "@/src/services/solicitud.service";
 import { extraerCoordenadas } from "@/src/utils/coordinates";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import React, { Component, useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
     StyleSheet,
@@ -16,6 +16,27 @@ import {
     View,
 } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
+
+// ── Error Boundary para prevenir crash nativo al renderizar el mapa ──
+class MapErrorBoundary extends Component<
+  { children: React.ReactNode; fallback: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error: Error) {
+    console.warn("[MapError] Crash nativo capturado por ErrorBoundary:", error.message);
+  }
+  render() {
+    if (this.state.hasError) return this.props.fallback;
+    return this.props.children;
+  }
+}
 
 // Formula Haversine básica para distancia en metros
 function getDistanceFromLatLonInM(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -51,6 +72,7 @@ export default function TrackingClienteScreen() {
   );
   const clearServicioActivo = useServicioStore((s) => s.clearServicioActivo);
   const updateFaseTracking = useServicioStore((s) => s.updateFaseTracking);
+  const setNavigatingToCalificar = useServicioStore((s) => s.setNavigatingToCalificar);
 
   // ── Inicialización desde backend si se monta tarde o idServicio es 0 ──
   useEffect(() => {
@@ -120,23 +142,35 @@ export default function TrackingClienteScreen() {
   useSocketTracking({
     idSolicitud: Number(idSolicitud),
     onUbicacion: (data) => {
-      updateTecnicoLocation(data.latitud, data.longitud);
+      // Validar datos antes de actualizar
+      const lat = Number(data.latitud);
+      const lon = Number(data.longitud);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon) || (lat === 0 && lon === 0)) {
+        console.warn("[tracking] Coordenadas de técnico inválidas ignoradas:", data);
+        return;
+      }
+
+      updateTecnicoLocation(lat, lon);
       setDistanciaMetros(data.distancia_restante_metros);
 
       if (mapRef.current && servicioActivo?.cliente_lat) {
-        mapRef.current.fitToCoordinates(
-          [
+        try {
+          mapRef.current.fitToCoordinates(
+            [
+              {
+                latitude: Number(servicioActivo.cliente_lat),
+                longitude: Number(servicioActivo.cliente_lon),
+              },
+              { latitude: lat, longitude: lon },
+            ],
             {
-              latitude: servicioActivo.cliente_lat,
-              longitude: servicioActivo.cliente_lon,
+              edgePadding: { top: 120, right: 60, bottom: 300, left: 60 },
+              animated: true,
             },
-            { latitude: data.latitud, longitude: data.longitud },
-          ],
-          {
-            edgePadding: { top: 120, right: 60, bottom: 300, left: 60 },
-            animated: true,
-          },
-        );
+          );
+        } catch (err) {
+          console.warn("[tracking] Error en fitToCoordinates:", err);
+        }
       }
     },
     onTecnicoCerca: () => {
@@ -157,12 +191,13 @@ export default function TrackingClienteScreen() {
     },
     onServicioFinalizado: (data) => {
       updateEstado("FINALIZADO");
+      setNavigatingToCalificar(true);
       setTimeout(() => {
         router.replace({
           pathname: "/(flows)/calificar",
           params: {
             idServicio: String(data.id_servicio),
-            valorTotal: String(data.valor_total ?? 0),
+            valorTotal: String(data.valor_total || (data as any).datos?.valor_total || 0),
           },
         });
       }, 1500);
@@ -213,46 +248,64 @@ export default function TrackingClienteScreen() {
       </View>
 
       {/* Map */}
-      <MapView
-        ref={mapRef}
-        provider={PROVIDER_GOOGLE}
-        style={styles.map}
-        initialRegion={{
-          latitude: servicioActivo.cliente_lat,
-          longitude: servicioActivo.cliente_lon,
-          latitudeDelta: 0.015,
-          longitudeDelta: 0.015,
-        }}
-      >
-        {/* Marcador del cliente */}
-        <Marker
-          coordinate={{
-            latitude: servicioActivo.cliente_lat,
-            longitude: servicioActivo.cliente_lon,
-          }}
-          title="Tu ubicación"
-        >
-          <View style={styles.markerClient}>
-            <Ionicons name="home" size={20} color="#fff" />
-          </View>
-        </Marker>
-
-        {/* Marcador del técnico */}
-        {servicioActivo.tecnico_lat != null &&
-          servicioActivo.tecnico_lon != null && (
-            <Marker
-              coordinate={{
-                latitude: servicioActivo.tecnico_lat,
-                longitude: servicioActivo.tecnico_lon,
-              }}
-              title="Técnico"
+      {/* Map — Protegido con MapErrorBoundary y guard de coordenadas */}
+      <MapErrorBoundary
+        fallback={
+          <View style={[styles.center, styles.map]}>
+            <MaterialIcons name="error-outline" size={48} color="#ef4444" />
+            <Text style={styles.errorText}>Error al cargar el mapa nativo</Text>
+            <TouchableOpacity
+              onPress={() => router.replace("/(tabs)/home")}
+              style={styles.retryBtn}
             >
-              <View style={styles.markerTech}>
-                <MaterialIcons name="engineering" size={20} color="#fff" />
-              </View>
-            </Marker>
-          )}
-      </MapView>
+              <Text style={styles.retryBtnText}>Volver al inicio</Text>
+            </TouchableOpacity>
+          </View>
+        }
+      >
+        <MapView
+          ref={mapRef}
+          provider={PROVIDER_GOOGLE}
+          style={styles.map}
+          initialRegion={{
+            latitude: Number(servicioActivo.cliente_lat),
+            longitude: Number(servicioActivo.cliente_lon),
+            latitudeDelta: 0.015,
+            longitudeDelta: 0.015,
+          }}
+        >
+          {/* Marcador del cliente */}
+          <Marker
+            coordinate={{
+              latitude: Number(servicioActivo.cliente_lat),
+              longitude: Number(servicioActivo.cliente_lon),
+            }}
+            title="Tu ubicación"
+          >
+            <View style={styles.markerClient}>
+              <Ionicons name="home" size={20} color="#fff" />
+            </View>
+          </Marker>
+
+          {/* Marcador del técnico */}
+          {servicioActivo.tecnico_lat != null &&
+            servicioActivo.tecnico_lon != null &&
+            Number.isFinite(servicioActivo.tecnico_lat) &&
+            Number.isFinite(servicioActivo.tecnico_lon) && (
+              <Marker
+                coordinate={{
+                  latitude: Number(servicioActivo.tecnico_lat),
+                  longitude: Number(servicioActivo.tecnico_lon),
+                }}
+                title="Técnico"
+              >
+                <View style={styles.markerTech}>
+                  <MaterialIcons name="engineering" size={20} color="#fff" />
+                </View>
+              </Marker>
+            )}
+        </MapView>
+      </MapErrorBoundary>
 
       {/* Status card */}
       <View style={styles.statusCard}>
@@ -328,6 +381,15 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16 },
   loadingText: { fontSize: 14, color: "#9ca3af" },
+  errorText: { fontSize: 16, color: "#ef4444", fontWeight: "600", textAlign: "center" },
+  retryBtn: {
+    marginTop: 12,
+    backgroundColor: "#407ee3",
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+  },
+  retryBtnText: { color: "#fff", fontWeight: "700" },
 
   header: {
     backgroundColor: "#407ee3",

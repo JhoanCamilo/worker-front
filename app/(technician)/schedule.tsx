@@ -1,7 +1,7 @@
 import { CitaAgenda, getAgenda } from "@/src/services/agenda.service";
 import { GarantiaItem, getGarantiasTecnico } from "@/src/services/garantia.service";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -32,11 +32,18 @@ const getHoy = () => new Date().toISOString().split("T")[0]; // "2026-03-27"
 
 export default function TechnicianScheduleScreen() {
   const router = useRouter();
+  const { modo: paramModo } = useLocalSearchParams<{ modo?: string }>();
   const [citas, setCitas] = useState<CitaAgenda[]>([]);
   const [garantias, setGarantias] = useState<GarantiaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [modo, setModo] = useState<"proximas" | "historial" | "garantias">("proximas");
+
+  useEffect(() => {
+    if (paramModo === "garantias" || paramModo === "historial" || paramModo === "proximas") {
+      setModo(paramModo as "proximas" | "historial" | "garantias");
+    }
+  }, [paramModo]);
   const [filtroEstado, setFiltroEstado] = useState("Todas");
   const [pagina, setPagina] = useState(1);
   const [totalPaginas, setTotalPaginas] = useState(1);
@@ -274,10 +281,12 @@ export default function TechnicianScheduleScreen() {
     const now = new Date();
     const isWtyActive = expires > now;
     const diffDays = Math.ceil((expires.getTime() - now.getTime()) / (1000 * 3600 * 24));
-    
-    const categoria = item.Servicio?.Solicitud?.subcategoria?.Categorium?.nombre || 'Servicio';
-    const subcategoria = item.Servicio?.Solicitud?.subcategoria?.nombre || '';
-    const nameCat = subcategoria ? `${categoria} - ${subcategoria}` : categoria;
+
+    const nameCat = item.servicio?.subcategoria?.nombre || "Servicio";
+    const clienteDatos = item.servicio?.cliente?.datos_usuario;
+    const clienteNombre = clienteDatos
+      ? `${clienteDatos.nombre} ${clienteDatos.apellido}`.trim()
+      : null;
 
     return (
       <TouchableOpacity
@@ -305,11 +314,18 @@ export default function TechnicianScheduleScreen() {
         </View>
 
         <Text style={styles.categoria}>{nameCat}</Text>
-        
+
+        {clienteNombre ? (
+          <View style={styles.infoRow}>
+            <Ionicons name="person-outline" size={14} color="#6b7280" />
+            <Text style={styles.infoText}>{clienteNombre}</Text>
+          </View>
+        ) : null}
+
         <View style={styles.infoRow}>
-          <Text style={[styles.infoText, {flex:1}]}>Vence en:</Text>
-          <Text style={[styles.infoText, {fontWeight: "bold"}, !isWtyActive && { color: "#ef4444" }]}>
-            {formatFecha(item.fecha_expiracion)}
+          <Ionicons name="time-outline" size={14} color="#6b7280" />
+          <Text style={[styles.infoText, !isWtyActive && { color: "#ef4444" }]}>
+            Vence: {formatFecha(item.fecha_expiracion)}
           </Text>
         </View>
       </TouchableOpacity>
@@ -398,10 +414,20 @@ export default function TechnicianScheduleScreen() {
         <FlatList
           data={modo === "garantias" ? (garantias as any[]) : (citas as any[])}
           keyExtractor={(item, index) => String(item.id_cita || item.id_garantia || index)}
-          renderItem={(props) => 
+          renderItem={(props) =>
             modo === "garantias"
               ? renderGarantia({ item: props.item as GarantiaItem })
               : renderCita({ item: props.item as CitaAgenda })
+          }
+          ListHeaderComponent={
+            modo === "garantias" ? (
+              <View style={styles.garantiasInfoBox}>
+                <Ionicons name="information-circle-outline" size={18} color="#6b7280" />
+                <Text style={styles.garantiasInfoText}>
+                  Aquí se muestran los trabajos que realizaste y que tienen garantía vigente. Son el respaldo de calidad que ofreciste a tus clientes, no trabajos pendientes por cubrir.
+                </Text>
+              </View>
+            ) : null
           }
           contentContainerStyle={styles.list}
           refreshControl={
@@ -479,6 +505,24 @@ const styles = StyleSheet.create({
 
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   emptyText: { fontSize: 15, color: "#9ca3af", marginTop: 12 },
+
+  garantiasInfoBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    backgroundColor: "#f9fafb",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+  },
+  garantiasInfoText: {
+    flex: 1,
+    fontSize: 12,
+    color: "#6b7280",
+    lineHeight: 18,
+  },
 
   list: { paddingHorizontal: 12, paddingBottom: 16 },
 

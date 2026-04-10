@@ -187,7 +187,10 @@ export default function NotificacionesScreen() {
             () =>
               router.push({
                 pathname: "/(flows)/calificar",
-                params: { idServicio: idServ },
+                params: {
+                  idServicio: idServ,
+                  valorTotal: toScalarId(datos.valor_total || datos.monto),
+                },
               }),
             datos.id_solicitud,
           );

@@ -13,7 +13,7 @@ import { useServicioStore } from "@/src/store/servicio.store";
 import { FontAwesome6, Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
@@ -50,14 +50,15 @@ export default function CotizacionesScreen() {
   const [fechaProgramada, setFechaProgramada] = useState<string | null>(null);
   const [showProgramadaModal, setShowProgramadaModal] = useState(false);
 
-  const solicitudId = (() => {
+  const solicitudId = useMemo(() => {
+    if (!idSolicitud) return null;
     if (Array.isArray(idSolicitud)) {
       const parsed = Number(idSolicitud[0]);
       return Number.isFinite(parsed) ? parsed : null;
     }
     const parsed = Number(idSolicitud);
     return Number.isFinite(parsed) ? parsed : null;
-  })();
+  }, [idSolicitud]);
 
   const fetchCotizaciones = useCallback(async () => {
     if (solicitudId === null) {
